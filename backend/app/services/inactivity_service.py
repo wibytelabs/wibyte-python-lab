@@ -1,3 +1,4 @@
+from backend.app import config
 import asyncio
 import logging
 import sqlite3
@@ -11,9 +12,9 @@ log = logging.getLogger(__name__)
 
 
 class InactivityService:
-    """Remove registered labs after 30 minutes without user input."""
+    """Remove registered labs after the configured idle timeout."""
 
-    INACTIVITY_TIMEOUT = timedelta(minutes=30)
+    INACTIVITY_TIMEOUT = timedelta(minutes=config.IDLE_MINUTES)
 
     def __init__(self, docker_client, db_path=None):
         self.docker_client = docker_client
