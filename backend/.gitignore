@@ -18,6 +18,3 @@ htmlcov/
 build/
 dist/
 *.egg-info/
-
-# Track configuration examples.
-!.env.example

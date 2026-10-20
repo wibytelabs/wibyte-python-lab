@@ -1,4 +1,3 @@
-from backend.app import config
 import os
 import re
 from urllib.parse import urlsplit
@@ -27,14 +26,14 @@ def issue_gui_url(response, lab_id, student_id):
         value=token,
         max_age=MAX_AGE,
         path=f"/gui/{lab_id}/",
-        secure=config.GUI_HTTPS,
+        secure=True,
         httponly=True,
         samesite="strict",
     )
     response.headers["Cache-Control"] = "no-store"
     return (
-        f'{config.GUI_BASE_URL}/gui/{lab_id}/vnc.html'
-        f'?autoconnect=true&resize=scale&encrypt={str(config.GUI_HTTPS).lower()}'
+        f"https://labs.wibyte.in/gui/{lab_id}/vnc.html"
+        f"?autoconnect=true&resize=scale&encrypt=true"
         f"&path=gui/{lab_id}/websockify"
     )
 

@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from backend.app.config import DATABASE_URL
+DATABASE_URL = "sqlite:///./wpl.db"
 
 engine = create_engine(
     DATABASE_URL,

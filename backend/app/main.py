@@ -1,8 +1,9 @@
-from backend.app import config
 from fastapi import Response
 from backend.app.routes.gui_proxy import router as gui_proxy_router, issue_gui_url
 import asyncio
 import docker
+from dotenv import load_dotenv
+load_dotenv()
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -138,7 +139,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=config.CORS_ORIGINS,
+    allow_origins=[
+        "https://labs.wibyte.in",
+        "http://200.234.44.47:4173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -243,10 +247,10 @@ def create_lab(user: CurrentUser, request: LabCreateRequest | None = None):
 
 @app.get("/labs/{lab_id}/session")
 def lab_session_status(lab_id: str, user: CurrentUser):
-    session = lab_service.get_for_student(lab_id, user.id)
-    if session is None:
+    result = inactivity_service.session_status(lab_id, user.id)
+    if result is None:
         raise HTTPException(status_code=404, detail="This lab is no longer active.")
-    return {"lab_id": lab_id, "status": session.status}
+    return result
 
 
 def _create_lab_unchecked(user: CurrentUser):
@@ -259,11 +263,11 @@ def _create_lab_unchecked(user: CurrentUser):
     student = lab_service.get_or_create_student(user.id, user.email, user.name)
     try:
         container = docker_client.containers.run(
-            config.LAB_IMAGE, detach=True, tty=True, stdin_open=True,
+            "wpl-student:dev", detach=True, tty=True, stdin_open=True,
             ports={"6080/tcp": ("127.0.0.1", 0)},
-            mem_limit=config.LAB_MEMORY,
-            nano_cpus=config.LAB_NANO_CPUS,
-            pids_limit=config.LAB_PIDS_LIMIT,
+            mem_limit="1g", # 1 GB memory limit
+            nano_cpus=250_000_000,  # 0.25 CPU limit
+            pids_limit=256, # 256 process limit
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to create lab container: {exc}")
