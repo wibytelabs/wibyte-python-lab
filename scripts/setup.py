@@ -98,7 +98,7 @@ def validate(values):
             raise SetupError("This wizard supports local IPv4 HTTP or HTTPS behind a TLS proxy.")
         if (parts.port or 80) != port:
             raise SetupError("For local HTTP, the public URL port must match WPL_HTTP_PORT.")
-    for name, default in (("WPL_LAB_PIDS_LIMIT", 256), ("WPL_IDLE_MINUTES", 30)):
+    for name, default in (("WPL_LAB_PIDS_LIMIT", 256), ("WPL_IDLE_MINUTES", 35)):
         integer(values.get(name, default), name)
     if not re.fullmatch(r"[1-9][0-9]*(?:[bkmgBKMG])?", values.get("WPL_LAB_MEMORY", "1g")):
         raise SetupError("WPL_LAB_MEMORY must be positive bytes or a value such as 512m or 1g.")
@@ -293,7 +293,7 @@ def fresh_configuration():
         "WPL_LAB_MEMORY": "1g",
         "WPL_LAB_CPUS": "0.25",
         "WPL_LAB_PIDS_LIMIT": "256",
-        "WPL_IDLE_MINUTES": "30",
+        "WPL_IDLE_MINUTES": "35",
     }
     public, port = validate(values)
     check_ports(port)

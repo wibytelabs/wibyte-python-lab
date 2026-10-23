@@ -115,7 +115,7 @@ Compose configuration in a report: it contains secrets.
 | `WPL_SECRET_KEY` | Preserved signing key for OAuth state and GUI cookies |
 | `WPL_LAB_IMAGE` | `wpl-student:dev` |
 | `WPL_LAB_MEMORY`, `WPL_LAB_CPUS`, `WPL_LAB_PIDS_LIMIT` | `1g`, `0.25`, `256` |
-| `WPL_IDLE_MINUTES` | 30; current auto-save/push and failure preservation still apply |
+| `WPL_IDLE_MINUTES` | 35; current auto-save/push and failure preservation still apply |
 
 The API URL, GUI URL, CORS origin and GitHub redirects derive from the public
 origin. Optional standalone API/GUI overrides exist, but this Compose setup

@@ -98,4 +98,4 @@ if _cpu_units != _cpu_units.to_integral_value():
 LAB_NANO_CPUS = int(_cpu_units)
 
 LAB_PIDS_LIMIT = positive_integer("WPL_LAB_PIDS_LIMIT", 256)
-IDLE_MINUTES = positive_integer("WPL_IDLE_MINUTES", 30)
+IDLE_MINUTES = positive_integer("WPL_IDLE_MINUTES", 35)

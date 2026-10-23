@@ -124,8 +124,18 @@ class SetupTests(unittest.TestCase):
                     patch.object(setup.secrets, "token_urlsafe", return_value="s" * 48), \
                     patch.object(setup, "check_ports"), contextlib.redirect_stdout(io.StringIO()):
                 setup.fresh_configuration()
+            self.assertIn("WPL_IDLE_MINUTES='35'", env_file.read_text())
             self.assertEqual(env_file.stat().st_mode & 0o777, 0o600)
             self.assertIn("WPL_SECRET_KEY='" + "s" * 48 + "'", env_file.read_text())
+
+    def test_idle_overrides_and_invalid_values(self):
+        for value in ("30", "45"):
+            values = settings() | {"WPL_IDLE_MINUTES": value}
+            setup.validate(values)
+            self.assertEqual(values["WPL_IDLE_MINUTES"], value)
+        for value in ("0", "-1", "invalid", "1.5", ""):
+            with self.subTest(value=value), self.assertRaises(setup.SetupError):
+                setup.validate(settings() | {"WPL_IDLE_MINUTES": value})
 
     def test_missing_config_with_existing_database_is_refused(self):
         with tempfile.TemporaryDirectory() as directory:
