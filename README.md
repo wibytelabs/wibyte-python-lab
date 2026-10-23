@@ -13,6 +13,11 @@ to validate an existing installation without changing it. See
 [the setup guide](docs/setup.md) for requirements, private configuration,
 adopting the existing local deployment, daily commands and provider callbacks.
 
+## Local checks
+
+See [the development guide](docs/development.md) for isolated, credential-free
+checks and the shared local/CI command.
+
 ## Planned Core
 
 - Browser-based code editor

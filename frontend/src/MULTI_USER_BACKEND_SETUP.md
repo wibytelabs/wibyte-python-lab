@@ -1,5 +1,10 @@
 # WiByte Labs multi-user backend setup
 
+> Historical deployment/auth reference. For the current local check workflow,
+> use [the development guide](../../docs/development.md) and the P01 completion report.
+> Historical addresses, timeout values and capability notes below are not
+> instructions to modify the original deployment.
+
 This update makes protected frontend-to-backend requests carry the signed-in Supabase access token. The backend verifies the token with Supabase, checks that the profile is approved, and uses the verified Supabase user ID as the owner of Labs and GitHub connections.
 
 ## 1. Add Supabase settings to `backend/.env`

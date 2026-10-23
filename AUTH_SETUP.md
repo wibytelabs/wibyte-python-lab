@@ -1,5 +1,10 @@
 # WiByte Labs authentication setup
 
+> Historical deployment/auth reference. For the current local check workflow,
+> use [the development guide](docs/development.md) and the P01 completion report.
+> Historical addresses, timeout values and capability notes below are not
+> instructions to modify the original deployment.
+
 For configurable local/new-machine deployment, follow `docs/setup.md` and the
 addresses printed by `./wpl urls`. The production addresses below are historical
 examples, not instructions to replace an existing project's settings. Do not rerun

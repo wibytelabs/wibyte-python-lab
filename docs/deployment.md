@@ -1,5 +1,10 @@
 # VPS deployment and operations
 
+> Historical deployment/auth reference. For the current local check workflow,
+> use [the development guide](development.md) and the P01 completion report.
+> Historical addresses, timeout values and capability notes below are not
+> instructions to modify the original deployment.
+
 ## Service control
 
 systemctl status wibyte-backend nginx --no-pager

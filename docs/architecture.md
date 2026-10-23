@@ -1,5 +1,10 @@
 # WiByte Labs architecture
 
+> Historical deployment/auth reference. For the current local check workflow,
+> use [the development guide](development.md) and the P01 completion report.
+> Historical addresses, timeout values and capability notes below are not
+> instructions to modify the original deployment.
+
 ## Current deployment
 
 - Hostinger VPS: 200.234.44.47
