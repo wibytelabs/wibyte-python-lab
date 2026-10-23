@@ -14,6 +14,7 @@ import {
 } from "@xterm/addon-fit";
 
 import "@xterm/xterm/css/xterm.css";
+import { apiUrls } from "./lib/api";
 
 
 type TerminalProps = {
@@ -232,7 +233,7 @@ const Terminal = forwardRef<
 
       const websocket =
         new WebSocket(
-          `${(import.meta.env.VITE_API_URL as string).replace(/^http/, "ws")}/labs/${labId}/terminal`,
+          apiUrls.webSocketUrl(`/labs/${encodeURIComponent(labId)}/terminal`),
         );
 
 

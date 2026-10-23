@@ -1,13 +1,9 @@
 import { useEffect, useState } from "react";
 import { supabase } from "./lib/supabase";
+import { settingsApiFetch as apiFetch } from "./lib/api";
 import "./SettingsPanel.css";
 
-async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}) {
-  const { data } = await supabase.auth.getSession();
-  const headers = new Headers(init.headers);
-  if (data.session?.access_token) headers.set("Authorization", `Bearer ${data.session.access_token}`);
-  return window.fetch(input, { ...init, headers });
-}
+
 
 type StudentSettings = {
   student: {

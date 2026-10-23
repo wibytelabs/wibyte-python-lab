@@ -21,6 +21,7 @@ import "./App.css";
 import LoginScreen from "./LoginScreen";
 import ResetPasswordScreen from "./ResetPasswordScreen";
 import { supabase } from "./lib/supabase";
+import { API_URL, apiFetch } from "./lib/api";
 
 
 
@@ -29,17 +30,7 @@ function defaultPythonFilename(path: string): string {
   return name && !name.includes(".") ? `${path}.py` : path;
 }
 
-const API_URL =
-  import.meta.env.VITE_API_URL;
 
-async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}) {
-  const { data } = await supabase.auth.getSession();
-  const headers = new Headers(init.headers);
-  if (data.session?.access_token) {
-    headers.set("Authorization", `Bearer ${data.session.access_token}`);
-  }
-  return window.fetch(input, { credentials: "include", ...init, headers });
-}
 
 
 type LabFile = {
@@ -2215,7 +2206,7 @@ useEffect(() => {
 
   const handleProcessExit =
     useCallback(
-      (_exitCode: number) => {
+      () => {
         setRunning(
           false
         );
@@ -3033,14 +3024,7 @@ function AccountStatus({
 }
 
 
-function App() {
-  if (
-    window.location.pathname ===
-    "/reset-password"
-  ) {
-    return <ResetPasswordScreen />;
-  }
-
+function AuthenticatedApp() {
   const [
     session,
     setSession,
@@ -3220,5 +3204,11 @@ function App() {
   );
 }
 
+
+function App() {
+  return window.location.pathname === "/reset-password"
+    ? <ResetPasswordScreen />
+    : <AuthenticatedApp />;
+}
 
 export default App;
