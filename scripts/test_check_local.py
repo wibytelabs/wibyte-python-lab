@@ -113,6 +113,56 @@ class RunnerTests(unittest.TestCase):
             with self.assertRaisesRegex(runner.CheckError, "symlink"):
                 runner.copy_sources(source, snapshot)
 
+    def test_mandatory_frontend_modules_include_production_lookup_and_policy(self):
+        with patch.object(runner, "run_container") as run:
+            runner.run_frontend_contracts(Path("/synthetic"), {})
+            command = run.call_args.args[3]
+            self.assertIn("/app/scripts/run_frontend_tests.mjs", command)
+            self.assertIn("/app/frontend/tests/accountLookup.test.mjs", command)
+            self.assertIn("/app/frontend/tests/frontendPolicy.test.mjs", command)
+            self.assertTrue(all("/app/" + name in command for name in runner.FRONTEND_TESTS))
+            self.assertIn("scripts/run_frontend_tests.mjs", runner.FILES)
+
+    def test_rejected_frontend_stage_stops_overall_runner(self):
+        for outcome in ("skipped case", "incomplete execution", "failed assertion"):
+            output = io.StringIO()
+            with self.subTest(outcome=outcome), \
+                    patch.object(runner, "prerequisites"), \
+                    patch.object(runner, "prepare_images", return_value="synthetic-image"), \
+                    patch.object(runner, "copy_sources"), \
+                    patch.object(runner, "run_checked"), \
+                    patch.object(runner, "run_container"), \
+                    patch.object(runner, "run_frontend_contracts",
+                                 side_effect=runner.CheckError(outcome)), \
+                    contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+                self.assertEqual(runner.main([]), 1)
+            self.assertNotIn("PASS: all mandatory", output.getvalue())
+
+    def test_frontend_failure_and_timeout_keep_owned_cleanup(self):
+        for reason in ("frontend policy rejected skips", "frontend stage timed out"):
+            commands = []
+            owner = None
+
+            def checked(label, command, **kwargs):
+                nonlocal owner
+                commands.append(command)
+                if command[:2] == ["docker", "run"]:
+                    owner = command[command.index("--label") + 1].split("=", 1)[1]
+                    raise runner.CheckError(reason)
+                if command[:3] == ["docker", "container", "inspect"]:
+                    return subprocess.CompletedProcess(
+                        command, 0, stdout="synthetic-owned-id|" + owner
+                    )
+                return subprocess.CompletedProcess(command, 0, stdout="")
+
+            with self.subTest(reason=reason), patch.object(runner, "run_checked", side_effect=checked):
+                with self.assertRaisesRegex(runner.CheckError, reason):
+                    runner.run_frontend_contracts(Path("/synthetic"), {})
+            self.assertEqual(commands[-1], ["docker", "rm", "-f", "synthetic-owned-id"])
+            self.assertIn("--network", commands[0])
+            self.assertEqual(commands[0][commands[0].index("--network") + 1], "none")
+            self.assertFalse(any("/var/run/docker.sock" in item for item in commands[0]))
+
     def test_backend_command_has_no_network_or_docker_socket(self):
         with patch.object(runner, "run_checked") as run:
             run.return_value = subprocess.CompletedProcess([], 1, stdout="")

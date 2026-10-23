@@ -16,11 +16,17 @@ FILES = (
     "alembic.ini", "backend/requirements.txt", "scripts/Dockerfile.checks",
     "scripts/setup.py", "scripts/test_setup.py", "scripts/test_deployment.py",
     "scripts/test_idle_defaults.py", "scripts/check_local.py",
-    "scripts/test_check_local.py", "frontend/package.json",
+    "scripts/test_check_local.py", "scripts/run_frontend_tests.mjs", "frontend/package.json",
     "frontend/package-lock.json", "frontend/index.html",
     "frontend/eslint.config.js", "frontend/vite.config.ts",
     "frontend/tsconfig.json", "frontend/tsconfig.app.json",
     "frontend/tsconfig.node.json",
+)
+FRONTEND_TESTS = (
+    "frontend/tests/apiUrls.test.mjs",
+    "frontend/tests/apiClient.test.mjs",
+    "frontend/tests/accountLookup.test.mjs",
+    "frontend/tests/frontendPolicy.test.mjs",
 )
 TREES = {
     "backend/app": {".py"},
@@ -99,7 +105,7 @@ def prerequisites(root, env):
     for relative in FILES:
         if not (root / relative).is_file():
             raise CheckError(f"Required source/lockfile missing: {relative}")
-    for relative in ("frontend/tests/apiUrls.test.mjs", "frontend/tests/apiClient.test.mjs"):
+    for relative in FRONTEND_TESTS:
         if not (root / relative).is_file():
             raise CheckError(f"Required contract tests missing: {relative}")
     run_checked("Compose prerequisite", ["docker", "compose", "version"],
@@ -200,6 +206,15 @@ def unit_code(root, patterns):
     )
 
 
+def run_frontend_contracts(snapshot, env):
+    return run_container(
+        "Frontend mandatory contracts and result policy", NODE_IMAGE, snapshot,
+        ["node", "--experimental-strip-types", "/app/scripts/run_frontend_tests.mjs",
+         *("/app/" + relative for relative in FRONTEND_TESTS)],
+        {}, env,
+    )
+
+
 def execute(prepare):
     with tempfile.TemporaryDirectory(prefix="wpl-check-") as directory:
         owned = Path(directory)
@@ -234,12 +249,7 @@ def execute(prepare):
                 "WPL_GITHUB_CLIENT_SECRET": "synthetic-secret",
             }, env,
         )
-        run_container(
-            "Frontend pure URL/request contracts", NODE_IMAGE, snapshot,
-            ["node", "--experimental-strip-types", "--test",
-             "/app/frontend/tests/apiUrls.test.mjs", "/app/frontend/tests/apiClient.test.mjs"],
-            {}, env,
-        )
+        run_frontend_contracts(snapshot, env)
         frontend_settings = {
             "npm_config_userconfig": "/tmp/npm-user.conf",
             "npm_config_globalconfig": "/tmp/npm-global.conf",

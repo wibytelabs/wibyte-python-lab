@@ -6,6 +6,7 @@ import {
 } from "./lib/supabase";
 
 import "./LoginScreen.css";
+import { createAccountLookup } from "./lib/accountLookup";
 
 
 type Mode =
@@ -15,28 +16,11 @@ type Mode =
 
 
 
-async function lookupAccountStatus(email: string): Promise<"new" | "confirmed" | "unconfirmed"> {
-  const response = await fetch(
-    `${import.meta.env.VITE_API_URL}/auth/account-status`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    },
-  );
-  const data = await response.json().catch(() => null);
-  if (!response.ok) {
-    throw new Error(
-      typeof data?.detail === "string"
-        ? data.detail
-        : "Unable to check your account. Please try again."
-    );
-  }
-  if (!["new", "confirmed", "unconfirmed"].includes(data?.status)) {
-    throw new Error("Unable to check your account. Please try again.");
-  }
-  return data.status;
-}
+const lookupAccountStatus = createAccountLookup(
+  import.meta.env.VITE_API_URL,
+  window.location.origin,
+  window.fetch.bind(window),
+);
 
 function LoginScreen() {
   const [

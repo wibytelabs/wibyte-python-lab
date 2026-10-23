@@ -148,3 +148,29 @@ Existing ignore rules already cover Python bytecode/venvs and frontend
 node_modules/dist. New runner artifacts stay outside the repository, so
 no broader ignore patterns are needed. Tests, handoff and report remain
 versionable. Historical VPS/auth docs are retained with pointers here.
+
+## P01 review corrections
+
+Signup and confirmation resend use the production createAccountLookup helper
+with the shared URL resolver, including missing/empty same-origin /api fallback.
+It sends the existing public POST JSON email request with no session lookup,
+bearer injection or credentials override. Its actual implementation is tested
+with injected fetch and synthetic responses, without initializing Supabase.
+
+Mandatory frontend modules are declared once in FRONTEND_TESTS, checked as
+prerequisites, copied into the allowlisted snapshot and passed to
+scripts/run_frontend_tests.mjs. The harness executes as a file in the pinned
+Node image, forwards the built-in spec reporter diagnostics, and evaluates
+runtime test:summary events after diagnostics flush. Every requested module
+must produce a completed per-file summary with positive registered test count;
+all registered tests must pass, with zero failures, skips, TODOs or cancellations.
+One cumulative summary must agree with those module counts. No fixed case
+total is embedded in the guard. A synthetic file-import pass from an empty
+module is insufficient because it has no registered-test per-file summary.
+
+Offline policy tests exercise passing, skipped, TODO, assertion/loader failure,
+cancelled, empty, early-exit and timed-out fixtures in disposable directories.
+Host tests verify rejection stops the global runner and preserves ownership
+cleanup after failure/timeout. These synthetic failures are expected test
+inputs, not failed real mandatory contract cases. Existing outer timeouts,
+container limits, clean environment and cleanup remain in place.
