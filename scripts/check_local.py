@@ -32,7 +32,7 @@ FRONTEND_TESTS = (
 TREES = {
     "backend/app": {".py"},
     "backend/alembic": {".py", ".mako"},
-    "backend/alembic_foundation": {".py", ".mako"},
+    "backend/alembic_foundation": {".py", ".mako", ".sql"},
     "backend/tests/foundation": {".py"},
     "frontend/src": {".ts", ".tsx", ".css", ".svg", ".png", ".jpg", ".jpeg", ".webp"},
     "frontend/public": {".svg", ".png", ".ico", ".jpg", ".webp", ".txt"},

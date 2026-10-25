@@ -41,6 +41,10 @@ class ConfigurationTests(unittest.TestCase):
 import socket, sys
 from unittest.mock import patch
 with patch.object(socket.socket, 'connect', side_effect=AssertionError('network forbidden')):
+    from backend.app.domains.identity.types import VerifiedIdentity
+    from backend.app.domains.authorization.policy import require_tenant_admin
+    from backend.app.domains.organizations.service import set_member_status, replace_roles, complete_primary_transfer
+    from backend.app.domains.cohorts.service import set_instructors
     from backend.app.foundation.app import create_app
     from backend.app.foundation.settings import FoundationSettings, postgres_url
     app = create_app(FoundationSettings())
@@ -86,7 +90,7 @@ class PostgresTests(unittest.TestCase):
         with ThreadPoolExecutor(max_workers=2) as pool:
             list(pool.map(migrate, [self.owner_url, self.owner_url]))
         with psycopg.connect(driver_url(self.owner_url)) as connection:
-            self.assertEqual(connection.execute("SELECT version_num FROM wpl.alembic_version").fetchall(), [("p0201_private_schema",)])
+            self.assertEqual(connection.execute("SELECT version_num FROM wpl.alembic_version").fetchall(), [(foundation_head(),)])
             connection.execute("SELECT pg_advisory_xact_lock(%s)", (MIGRATION_LOCK,))
             with ThreadPoolExecutor(max_workers=1) as pool:
                 future = pool.submit(migrate, self.owner_url)
@@ -166,3 +170,9 @@ class PostgresTests(unittest.TestCase):
         with psycopg.connect(driver_url(self.owner_url)) as connection:
             self.assertEqual(connection.execute("SELECT count(*) FROM wpl.alembic_version").fetchone()[0], 0)
         migrate(self.owner_url)
+
+
+def foundation_head():
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+    return ScriptDirectory.from_config(Config('/app/backend/alembic_foundation.ini')).get_current_head()

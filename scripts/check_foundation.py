@@ -161,7 +161,7 @@ def execute(prepare):
                     "suite.countTestCases() or sys.exit('No foundation tests discovered'); "
                     "result=unittest.TextTestRunner(verbosity=2).run(suite); "
                     "sys.exit(0 if result.wasSuccessful() and not result.skipped else 1)")
-            fixture.test(image, snapshot, code, "P02.1 real Postgres and configuration tests")
+            fixture.test(image, snapshot, code, "Foundation Postgres/configuration/schema tests")
             fixture.sql("Recreate only the owned fixture schema", "DROP SCHEMA wpl CASCADE; CREATE SCHEMA wpl AUTHORIZATION wpl_migrator; REVOKE ALL ON SCHEMA wpl FROM PUBLIC; GRANT USAGE ON SCHEMA wpl TO wpl_app,wpl_worker;")
             fixture.test(image, snapshot, "import os; from backend.app.foundation.migrate import migrate; "
                 "from backend.app.foundation.db import FoundationDatabase; from backend.app.foundation.settings import FoundationSettings; "
@@ -169,7 +169,7 @@ def execute(prepare):
                 "db.verify_runtime_role(); db.close(); print('Recreated target: migration and runtime role passed.')", "Recreated-target migration smoke")
         finally:
             fixture.cleanup()
-        print("PASS: P02.1 foundation checks completed; no skipped cases.", flush=True)
+        print("PASS: implemented foundation checks completed; no skipped cases.", flush=True)
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)

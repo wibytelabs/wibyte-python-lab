@@ -226,3 +226,41 @@ and target recreation are test operations, not a live-data rollback procedure.
 Provider compatibility, deployed activation and remote Actions remain unverified.
 Tenant business tables/policy/jobs/APIs/frontend/import/file-safety work remain later
 P02 checkpoints. No service restart or real migration is part of this checkpoint.
+
+
+### P02.2 schema and invariant services
+
+Separate revisions add fifteen private tenant/job/mapping tables and deferred
+primary/instructor/invitation guards. Foundation SQL migration sources are explicit
+allowlisted snapshot inputs. The migration regression follows the actual chain head.
+All application tables start with RLS enabled and no runtime grants; scoped RLS/API
+behavior is a subsequent P02.3 gate. Narrow temporary grants/policies in one disposable
+constraint fixture allow actual wpl_app inserts to exercise composite foreign keys;
+they are removed in finally and are not production authorization policies.
+
+Parent row updates serialize membership/role/assignment transitions, including
+repeatable-read races; final-state checks run after child mutation even when a
+session requests immediate constraints. A designated primary cannot be ordinarily
+removed, suspended or demoted. Transfers require an active same-org target admin and
+retain the old admin. Active organizations require an active accepted primary; active
+cohorts require an active assigned instructor. Security suspension still blocks a
+user; affected organizations/unserved cohorts enter audited recovery_required state.
+That cohort state is a bounded addition to avoid refusing a necessary global block.
+Reactivation/recovery is explicit; global approval does not automatically activate orgs.
+
+Domain services use typed VerifiedIdentity without metadata grants, current DB admin
+policy, parent locks, expected versions and sanitized conflicts. Ordinary membership
+status/role changes and instructor replacement append audit in the caller transaction;
+instructor removal retains the cohort membership history. Role/assignment/status
+changes advance appropriate access epochs. Transfer completion validates current
+primary, recent auth time, stored actor/version/expiry/confirmation and eligible target;
+preview HTTP, executive recovery and notification outbox wiring follow in P02.5/P02.4.
+No production provider verifier, debug identity header or bypass flag is introduced.
+Synthetic VerifiedIdentity objects are constructed only by fixture tests in this step.
+
+Service policy tests use explicitly labelled fixture owner sessions to isolate domain
+behavior; these do not prove runtime RLS. The existing runtime-role constraint tests
+remain separate. Real runtime RLS, complete multi-role policy, token verification and
+route policy proofs are still mandatory in P02.3. No new endpoint is exposed yet.
+Run scripts/check_foundation.py from /tmp for focused proof, then the full local gate
+before committing this checkpoint. Keep recorded counts tied to the actual output.
