@@ -472,3 +472,234 @@ The RLS suite's earlier generic denial test now checks DELETE users rather than
 DELETE organization_roles, because scoped admin role deletion is deliberately added.
 The constraint fixture uses production role/assignment grants and retains temporary
 constraint-only transfer/invitation policies until those workflows are implemented.
+
+### P02.4 encrypted payload primitive (enqueue/worker wiring follows)
+
+backend.app.domains.jobs.payloads uses the installed cryptography AESGCM API with
+an explicitly resolved 32-byte key and a fresh random 12-byte nonce. Envelopes carry
+WPL1, nonce and authenticated ciphertext/tag; ciphertext is excluded from dataclass
+repr. There is no legacy signing-key, environment, file, synthetic-default or remote
+provider fallback. Concrete KeyProvider.current_reference/resolve implementations
+must be injected by the trusted composition root. Synthetic providers live in tests
+only. Key references are bounded identifiers, not key material; rotation resolves the
+recorded reference and retains old references only while needed. Key lifecycle and
+operational nonce/message budgets remain requirements before real activation.
+
+Associated data binds version, key reference, tenant/personal/platform scope and
+scope UUID, verified actor UUID, operation UUID, payload UUID and job purpose. This
+prevents an encrypted delivery capability being swapped between those contexts.
+These bindings are not permission grants: enqueue/worker callers must validate
+current actor/scope authority separately. Personal scope matches its actor; platform
+scope uses the reserved zero UUID. No arbitrary worker impersonation API is added.
+
+Payloads are JSON objects with string keys, finite numbers, bounded nodes/depth and
+at most 32 KiB canonical UTF-8 bytes. Binary envelopes are at most 32800 bytes,
+inside the existing secret_payloads schema limit. Malformed/tampered envelopes,
+wrong binding/key, duplicate-key/non-object JSON and invalid sizes fail closed.
+Missing/invalid key material produces a sanitized key-unavailable error; corrupt
+payloads produce a separate sanitized invalid-payload error. Neither includes raw
+payload/key/provider details. No API returns decrypted payloads from this module.
+
+Mandatory tests use real AES-256-GCM and synthetic keys, including scope/actor/
+operation/payload/purpose/reference swaps, nonce differences, rotation/retirement,
+tampering, invalid JSON and size boundaries. An owner-seeded disposable DB test
+persists actual ciphertext, decrypts the stored value with the explicit fixture key,
+and verifies actual wpl_app SELECT ciphertext is still denied. This is ciphertext
+compatibility/isolation proof, not production enqueue/worker authorization proof.
+Durable job/outbox insertion, idempotency, lease fencing, retry/dead-letter, current
+actor rechecks and fake delivery remain the next P02.4 slices. Real mail delivery,
+provider/KMS configuration and authenticated browser smoke remain NOT RUN.
+
+### P02.4 transactional idempotency foundation (tenant operations first)
+
+jobs.idempotency.execute_idempotent runs a trusted server callback in the existing
+bound request transaction. Its first allowlisted operations are member status,
+organization role replacement and instructor assignment. The caller supplies a
+RequestContext, operation enum, bounded idempotency key and canonical JSON object.
+No HTTP caller supplies a callback or arbitrary SQL/operation/capability name.
+Keys are scoped by verified actor, operation and tenant organization. Only a SHA256
+request digest is stored, alongside a small fixed-shape public result, not the raw
+request. Status/member/cohort IDs, roles and version are the only receipt fields;
+private capability/token/payload fields are rejected before persistence.
+
+Current context/permission is checked before locking and again after acquiring a
+transaction-scoped advisory lock derived from the complete actor/operation/scope/key.
+The existing composite database primary key remains the final uniqueness guard.
+Same-key/same-body replay returns the saved result; changed input raises the stable
+idempotency_conflict (409) without repeating the callback. A callback runs inside a
+savepoint so failure/invalid result rolls its writes back even if the caller catches
+the error. Outer rollback also discards business/audit/receipt together. The returned
+outcome is provisional until the caller's outer transaction commits. Callback code
+must not commit or perform external I/O; external effects belong to durable outbox.
+
+Revision p0207_idempotency grants only own-actor/current-tenant-admin SELECT/INSERT
+for these operation receipts, with an explicit policy helper, safe search_path and
+bounded public JSON shapes. No UPDATE/DELETE, worker, personal/platform receipt or
+business authority is added. Cached responses also require current permission;
+revocation cannot be bypassed by reusing an old request key. Transaction pool lock
+and statement timeout bounds apply. Hash collisions can serialize unrelated work;
+the database primary key, not a lock hash alone, defines receipt identity.
+
+Real wpl_app tests invoke actual mutation services and prove concurrent replay,
+changed-body conflict, actor/org/operation separation, pool-independent persistence,
+outer/savepoint rollback, current-permission recheck, PK uniqueness, immutability and
+secret-field rejection. This is the foundation for operation idempotency, not proof
+of idempotent organization creation or external exactly-once delivery. Organization
+creation/status/primary and enqueue operations must explicitly add their operation,
+scope, receipt schema and production API wiring in subsequent P02.4/P02.5 slices.
+Durable jobs/outbox and worker lease/fencing/retry/current-actor checks remain pending.
+
+### P02.4 tenant invitation enqueue foundation
+
+jobs.enqueue prepares a typed invitation delivery before the database unit of work.
+prepare_invitation resolves the explicitly injected key provider and encrypts the
+bounded invitation payload; no key-provider I/O or encryption occurs inside
+enqueue_invitation. Production key-provider configuration and delivery integration
+remain explicit future wiring. Synthetic tests supply their own key provider.
+
+Inside the bound tenant transaction, enqueue_invitation checks the current actor's
+administrator authority and the current invitation UUID, organization, pending
+membership, normalized recipient, token digest and expiry. A delivery UUID lock
+serializes retries. Matching intent replays its job receipt; changed intent or an
+unverified legacy ID collision fails without adopting another job. A nested
+savepoint persists ciphertext, queued job, pending outbox and redacted audit
+atomically; an enclosing idempotent business transaction owns final commit/rollback.
+No activation token, email or ciphertext enters the public receipt or audit.
+
+Revision p0208_enqueue grants tenant administrators narrowly scoped INSERT and
+readable job metadata. Private ciphertext remains unreadable by wpl_app. Application
+code cannot mark a job complete, dispatch an outbox entry, update/delete queue rows,
+or acquire worker privileges. Helper EXECUTE grants are explicit and checked with
+safe search_path and owner identity. Jobs without the new verified intent hash are
+not exposed or adopted. Existing private fixture rows remain unchanged.
+
+The only operation here is deliver_invitation for an existing pending tenant
+invitation; platform provisioning requires separate authority and policy wiring.
+The receipt means queued/pending_integration, never delivered or activated. No
+provider, mail, browser session, worker loop or application route is invoked.
+Worker claims, lease fencing, retries, current-actor checks before effects and fake
+adapter crash/reconciliation proof remain pending. The eventual external call must
+run outside a database transaction.
+
+Actual-role tests cover ciphertext persistence, scoped metadata, concurrent
+same-intent deduplication, conflicting input, key resolution before checkout,
+invalid/revoked/expired target denial, actor substitution, immutable queue metadata,
+legacy collisions and a real unique-constraint outbox failure. Business state,
+audit, receipt and queue rows roll back together on failure or outer rollback.
+
+### P02.4 restricted worker claim and renewal
+
+Revision p0209_worker_leases gives wpl_worker EXECUTE on claim_deliveries and
+renew_delivery only. Worker table SELECT/INSERT/UPDATE/DELETE and payload reads
+remain denied; wpl_app cannot call either worker entry point. Owner-definer
+functions use an explicit safe search_path, qualified objects and no dynamic SQL.
+The shared private delivery_actor_allowed predicate also backs tenant_admin, so
+request services and worker decisions require the same current global user,
+organization, active membership and administrator role. Worker decisions use
+stored job actor/org/scope, independent of caller-supplied session context.
+
+claims use FOR UPDATE SKIP LOCKED with a batch of 1..20 and a lease of 5..300
+seconds. Only due tenant invitation jobs with verified intent, private payload
+reference and matching durable delivery outbox are considered. A successful claim
+increments attempts and lease generation, records owner/expiry, dispatches the
+outbox intent and appends a redacted audit in the same transaction. Dispatched
+means the intent reached the database worker lease, never that mail was sent.
+Expired running jobs can be reclaimed; generation advances and stale/foreign
+owners cannot renew. Exhausted jobs become dead and revoked actors' jobs cancel.
+Both terminal decisions clear leases and append audit. Renewal requires the exact
+unexpired owner/generation and current stored actor permission; it never shortens
+the lease. Invalid bounds are rejected in Python and independently in PostgreSQL.
+
+The Python wrappers own short transactions and return only after commit. They do
+not resolve keys, load ciphertext, contact providers or initialize workers on
+import. Synthetic tests use actual wpl_worker connections, competing claims,
+explicit expiry timestamps, a held row lock, rollback, stored-actor revocation,
+maximum attempts, delayed availability and privilege denials. No long sleeps.
+
+Payload loading, fenced completion/retry/backoff, fake external delivery dedup and
+crash reconciliation remain separate pending gates. A valid lease alone does not
+prove delivery or universal exactly-once effects. There is no production worker
+loop or runtime activation in this slice.
+
+### P02.4 fenced worker payload and transition foundation
+
+Revision p0210_worker_transitions adds three worker-only owner-definer functions:
+delivery_payload, authorize_delivery_target and finish_delivery. No direct worker
+or application table access is added. Each checks stored tenant job scope/kind,
+verified intent and the exact running lease owner/generation and current expiry.
+Payload loading additionally requires the current stored actor's administrator
+authority and returns only that leased job's scoped encrypted material. Python
+returns an envelope/binding after commit; decrypt/key resolution happens outside
+the database transaction. Material repr omits the encrypted envelope.
+
+After decrypting, authorize_delivery checks the fixed invitation shape, recomputes
+the complete actor/org/kind/payload intent hash, and asks PostgreSQL to recheck the
+current actor and exact pending invitation recipient, token digest and expiry.
+A different otherwise valid invitation cannot substitute for this job's payload.
+Run this immediately before an external call. This check cannot make provider I/O
+atomic with database revocation; external adapters still need stable operation
+identity and reconciliation. No adapter/provider is invoked by these wrappers.
+
+finish_delivery accepts only success, bounded retry codes (transport_unavailable,
+key_unavailable), or bounded cancellation codes (payload_invalid,target_unavailable).
+Late/foreign/expired generations return no transition. Current actor revocation
+cancels even an attempted success. A valid retry clears the lease and persists a
+5-second exponential delay, capped at 300 seconds, or dead-letters at max_attempts.
+All outcomes append fixed-shape audit with stored actor, worker and generation;
+provider exception details, recipient and token are never accepted as error codes.
+A database rollback restores state and discards the audit together. Returned state
+is committed before the wrapper returns. A succeeded database fixture transition
+is not evidence of mail delivery or provider integration.
+
+Actual-role tests prove scoped payload access, target/intent checks, pool release
+before decrypt, expiry/reclaim completion fencing, one terminal audit, backoff and
+cap without sleeps, dead-letter, global/member/role/org revocation, transition
+rollback and denied application/worker table privilege bypass. Fake delivery and
+crash-after-external-success reconciliation remain pending, as do actual provider,
+production worker loop and public job-status route integration.
+
+### P02.4 explicitly injected delivery execution and synthetic reconciliation
+
+jobs.execution.process_delivery runs one committed lease using an explicit cipher
+and adapter. It loads only fenced encrypted material in a short worker transaction,
+then resolves/decrypts keys after commit, renews the lease and rechecks the exact
+current invitation/actor/intent before calling the adapter outside the database.
+The adapter must honor a 10-second timeout and deduplicate/reconcile by the stable
+job UUID across retries, process restart and lease generation changes. No daemon,
+provider credentials, network client, concrete mail adapter or key defaults are
+initialized here. Provider exceptions become a fixed transport_unavailable code;
+key errors retry, invalid payloads cancel, and stale leases cannot complete.
+
+Adapters return the enum SIMULATED or PROVIDER_ACCEPTED, not an arbitrary message.
+Revision p0211_delivery_execution atomically acknowledges a current lease and
+records delivery_status as simulated or provider_accepted plus redacted audit.
+Application reads/replayed enqueue receipts preserve that status. A fake adapter
+never becomes Delivered; provider_accepted would only mean an explicitly integrated
+provider accepted the request, not that a recipient received/read mail. Existing
+control fixtures retain pending_integration unless explicitly acknowledged. No
+real provider implementation or browser delivery smoke is part of this slice.
+The actual worker/application still have no direct queue update or payload SELECT.
+
+A test-only adapter uses a separate temporary SQLite provider store with a unique
+operation UUID and request digest. It does not store raw token/email or send mail.
+Tests crash after that store commits, then reclaim with a new worker pool, key
+provider and adapter object and reconcile one simulated effect. Overlapping old
+and reclaimed workers use the same provider operation identity; one current lease
+acknowledges and the old generation loses its completion. A real PostgreSQL CHECK
+failure after fake acceptance rolls back completion/audit; subsequent reclaim
+reconciles the same durable fake effect. This demonstrates the specified adapter's
+dedup contract, not universal exactly-once delivery from a database lease.
+
+Other actual-role checks exercise transport retry with fixed diagnostics, key
+unavailability, tampered ciphertext, role revocation during key resolution, revoked
+targets, required adapter injection, unrecognized acknowledgement and explicit
+simulated status/audit. Fixture timestamps avoid long waits. No database checkout
+is held during key resolution or fake adapter I/O. Global/member/role/org and
+expiry checks remain shared with the earlier transition tests. Revocation can
+still race an external call after the final database check; adapters require
+operation-specific reconciliation and deployment policies before activation.
+
+This completes the isolated tenant invitation job plumbing, not pending-organization
+platform provisioning, organization-create idempotency, public job-status routes,
+executive APIs, real provider setup or final P02 acceptance. Those gates remain
+explicitly pending. Run the complete local gate before recording this checkpoint.

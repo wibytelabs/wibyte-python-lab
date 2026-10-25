@@ -48,6 +48,12 @@ with patch.object(socket.socket, 'connect', side_effect=AssertionError('network 
     from backend.app.domains.authorization.policy import require_tenant_admin
     from backend.app.domains.organizations.service import set_member_status, replace_roles, complete_primary_transfer
     from backend.app.domains.cohorts.service import set_instructors
+    from backend.app.domains.jobs.payloads import PayloadCipher, PayloadBinding, PayloadScope
+    from backend.app.domains.jobs.idempotency import execute_idempotent, TenantOperation, MutationResult
+    from backend.app.domains.jobs.enqueue import prepare_invitation, enqueue_invitation
+    from backend.app.domains.jobs.leases import claim_deliveries, renew_delivery
+    from backend.app.domains.jobs.transitions import load_delivery, authorize_delivery, finish_delivery
+    from backend.app.domains.jobs.execution import process_delivery, DeliveryAcknowledgement
     from backend.app.foundation.app import create_app
     from backend.app.foundation.settings import FoundationSettings, postgres_url
     app = create_app(FoundationSettings())

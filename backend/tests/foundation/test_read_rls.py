@@ -218,18 +218,19 @@ class ReadRLSTests(unittest.TestCase):
                     session.execute(text(statement),{'id':identifier})
             self.assertEqual(result.exception.orig.sqlstate,'42501')
 
-    def test_policy_helpers_have_minimal_execute_safe_search_path_and_no_worker_grants(self):
-        entries={'read_org','read_member','read_user','read_cohort','read_assignment','read_platform_role','identity_insert_allowed','write_tenant','write_tenant_audit'}
+    def test_policy_helpers_have_minimal_execute_safe_search_path_and_explicit_worker_grants(self):
+        entries={'read_org','read_member','read_user','read_cohort','read_assignment','read_platform_role','identity_insert_allowed','write_tenant','write_tenant_audit','idempotency_access','delivery_target_allowed','payload_enqueue_allowed','job_enqueue_allowed','job_read_allowed','outbox_enqueue_allowed','outbox_read_allowed','job_audit_allowed'}
+        worker_entries={'claim_deliveries','renew_delivery','delivery_payload','authorize_delivery_target','finish_delivery','acknowledge_delivery'}
         with connect() as owner:
             rows=owner.execute("""SELECT p.proname,p.prosecdef,p.proconfig,
                 has_function_privilege('wpl_app',p.oid,'EXECUTE'),has_function_privilege('wpl_worker',p.oid,'EXECUTE'),
                 pg_get_userbyid(p.proowner)
                 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='wpl'""").fetchall()
-            self.assertTrue(entries <= {row[0] for row in rows})
+            self.assertTrue((entries | worker_entries) <= {row[0] for row in rows})
             for name,definer,config,app,worker,owner_name in rows:
                 self.assertEqual(app,name in entries,name)
-                self.assertFalse(worker,name)
+                self.assertEqual(worker,name in worker_entries,name)
                 self.assertEqual(owner_name,'wpl_migrator')
                 self.assertIn('search_path=pg_catalog, wpl',config,name)
-                if name in entries: self.assertTrue(definer,name)
-        print('Actual wpl_app read RLS: scoped rows; private helpers/worker authority remain denied.',flush=True)
+                if name in entries | worker_entries: self.assertTrue(definer,name)
+        print('Actual wpl_app read RLS: scoped rows; private helpers denied; worker has only explicit queue entry points.',flush=True)
