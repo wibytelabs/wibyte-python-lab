@@ -187,7 +187,7 @@ class ReadRLSTests(unittest.TestCase):
             "UPDATE wpl.users SET global_state='active'",
             "INSERT INTO wpl.platform_roles(user_id,capability,reason) VALUES (:actor,'users','Synthetic attempt')",
             "UPDATE wpl.organizations SET status='active'",
-            'DELETE FROM wpl.organization_roles',
+            'DELETE FROM wpl.users',
             'SELECT * FROM wpl.secret_payloads',
             'SELECT * FROM wpl.migration_mappings',
             'SELECT verified_email FROM wpl.users',
@@ -219,7 +219,7 @@ class ReadRLSTests(unittest.TestCase):
             self.assertEqual(result.exception.orig.sqlstate,'42501')
 
     def test_policy_helpers_have_minimal_execute_safe_search_path_and_no_worker_grants(self):
-        entries={'read_org','read_member','read_user','read_cohort','read_assignment','read_platform_role','identity_insert_allowed'}
+        entries={'read_org','read_member','read_user','read_cohort','read_assignment','read_platform_role','identity_insert_allowed','write_tenant','write_tenant_audit'}
         with connect() as owner:
             rows=owner.execute("""SELECT p.proname,p.prosecdef,p.proconfig,
                 has_function_privilege('wpl_app',p.oid,'EXECUTE'),has_function_privilege('wpl_worker',p.oid,'EXECUTE'),

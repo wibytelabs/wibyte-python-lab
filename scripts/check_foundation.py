@@ -29,7 +29,7 @@ def checked(label, command, env, *, timeout=30, capture=False, check=True, input
 
 FOUNDATION_TESTS = (
     'test_context.py', 'test_database.py', 'test_guards.py', 'test_http.py', 'test_identity.py',
-    'test_read_rls.py', 'test_schema.py', 'test_services.py',
+    'test_mutation_rls.py', 'test_read_rls.py', 'test_schema.py', 'test_services.py',
 )
 
 

@@ -74,22 +74,32 @@ class SchemaTests(unittest.TestCase):
             owner.rollback()
 
     def test_actual_runtime_composite_fks_reject_cross_org_children(self):
-        # Temporary narrowly scoped fixture grants let actual wpl_app writes reach
-        # constraints. These are not production/application authorization policies.
-        tables = ('organization_roles','cohort_memberships','primary_admin_transfers','invitations')
+        # Role/assignment writes now use actual production tenant policies. Only
+        # transfer/invitation tables retain temporary constraint-only fixture grants;
+        # their production mutation workflows are still a later checkpoint.
+        tables = ('primary_admin_transfers','invitations')
         with connect() as owner:
             # Preserve the production read grants across this constraint-only fixture.
             prior_select = {name: owner.execute(
                 "SELECT has_table_privilege('wpl_app',%s,'SELECT')", ('wpl.'+name,)).fetchone()[0]
                 for name in tables}
             first, second = seed_org(owner), seed_org(owner)
+            for fixture in (first,second):
+                owner.execute("UPDATE wpl.organizations SET status='active' WHERE id=%s",(fixture['org'],))
             for name in tables:
                 owner.execute(sql.SQL('GRANT SELECT,INSERT ON wpl.{} TO wpl_app').format(sql.Identifier(name)))
                 owner.execute(sql.SQL('CREATE POLICY p022_constraint_fixture ON wpl.{} TO wpl_app '
                     'USING (org_id IN ({},{})) WITH CHECK (org_id IN ({},{}))').format(sql.Identifier(name),
                     sql.Literal(first['org']),sql.Literal(second['org']),sql.Literal(first['org']),sql.Literal(second['org'])))
+        from backend.app.domains.authorization.context import RequestContext,RequestScope
+        from backend.app.domains.identity.types import VerifiedIdentity
+        context=RequestContext(VerifiedIdentity(first['user']),RequestScope.TENANT,first['org'])
+        def bind(runtime):
+            runtime.execute("SELECT set_config('wpl.actor_id',%s,true),set_config('wpl.scope_kind',%s,true),set_config('wpl.org_id',%s,true),set_config('wpl.auth_time','',true)",
+                            (str(context.identity.subject),context.scope.value,str(context.org_id)))
         try:
             with connect('APPLICATION') as runtime:
+                bind(runtime)
                 self.assertEqual(runtime.execute('SELECT current_user').fetchone()[0], 'wpl_app')
                 runtime.execute("INSERT INTO wpl.organization_roles(org_id,membership_id,role) VALUES (%s,%s,'instructor')", (first['org'],first['member']))
                 runtime.commit()
@@ -106,6 +116,7 @@ class SchemaTests(unittest.TestCase):
                 ]
                 for statement, params in cases:
                     with self.subTest(operation=statement.split('(')[0]):
+                        bind(runtime)
                         with self.assertRaises(psycopg.errors.ForeignKeyViolation):
                             runtime.execute(statement,params)
                             runtime.execute('SET CONSTRAINTS ALL IMMEDIATE')

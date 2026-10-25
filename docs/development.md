@@ -436,3 +436,39 @@ valid INSERT policy. Existing table scans still return only actual rows. A direc
 runtime regression executes the same statement twice, proves one pending mirror,
 and rejects other-subject insertion and approval writes. No extra table/column
 privileges or authority grants are added by this predicate correction.
+
+### P02.3 ordinary tenant mutation slice
+
+Revision p0206_tenant_mutations adds application tenant-admin UPDATE policies for
+metadata/member status and SELECT FOR UPDATE locks, role INSERT/DELETE and instructor
+assignment INSERT/UPDATE(status). Column grants exclude identity/org remapping,
+access epochs, global approval and the protected primary designation. Parent/version/
+epoch and deferred primary/final-instructor triggers still run. No organization or
+membership creation, transfer ledger, executive, worker or queue grant is added.
+
+Only write_tenant and write_tenant_audit are new public-to-app boolean entry points;
+PUBLIC and worker execution remains revoked and internal helpers stay private. Audit
+INSERT is limited to the bound actor, same-org admin, supported membership/cohort
+actions, existing same-org targets and a bounded reason. UPDATE/DELETE of audit stays
+ungranted. Tenant admins may read own-org audit; unbound/non-admin/cross-org access
+remains filtered. Domain operations append audit in the same request transaction.
+Failure, including audit failure, must roll back business changes together.
+
+Shared service policy checks that the current application DB context matches the
+passed VerifiedIdentity and organization before checking actual active grants. The
+trusted migration owner remains available only for fixture/maintenance callers and
+is rejected as an application runtime identity by the factory. No request bypass
+flag or actor header can select that role. Worker domain calls remain denied until
+an explicit worker authorization design is implemented in P02.4.
+
+New actual-wpl_app tests run production member/role/instructor services in bound
+request transactions. They test versions, epochs, history, audit and rollback,
+non-admin/cross-org/context-substitution denials, direct SQL invariants and competing
+administrators. Ordinary self-demotion/suspension fails closed when it removes the
+current mutation/audit authority; explicit exit/rejoin workflows remain P05 work.
+Primary designation writes remain denied pending the protected P02.5 transfer/recovery
+workflow. Current APIs remain read-only except the own pending identity mirror.
+The RLS suite's earlier generic denial test now checks DELETE users rather than
+DELETE organization_roles, because scoped admin role deletion is deliberately added.
+The constraint fixture uses production role/assignment grants and retains temporary
+constraint-only transfer/invitation policies until those workflows are implemented.
