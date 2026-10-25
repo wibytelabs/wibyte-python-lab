@@ -174,3 +174,55 @@ Host tests verify rejection stops the global runner and preserves ownership
 cleanup after failure/timeout. These synthetic failures are expected test
 inputs, not failed real mandatory contract cases. Existing outer timeouts,
 container limits, clean environment and cleanup remain in place.
+
+
+## P02.1 disposable tenant database checkpoint
+
+The legacy SQLite config, Alembic chain and startup remain unchanged. The independent
+foundation factory takes injected FoundationSettings and does not read dotenv,
+connect on construction, migrate or import Docker/legacy startup. New features default
+off (WPL_FOUNDATION_ENABLED=false); no live flag/config is changed in this checkpoint.
+WPL_APPLICATION_DATABASE_URL is the non-owner runtime identity; only the explicit
+migration tool receives WPL_MIGRATION_DATABASE_URL. Pool defaults: two connections,
+zero overflow; connect, pool, query, lock and idle transaction timeouts are bounded.
+WPL_WORKER_DATABASE_URL is currently synthetic role-test input, not production wiring.
+
+Pinned fixture: PostgreSQL 17.11, provisional pending actual provider compatibility.
+Image: postgres@sha256:639ab7ceb90e13123085b741fb31ef493fba25463002f6da665352e7b534b652.
+Driver pins: psycopg[binary]==3.3.6 and psycopg-binary==3.3.6. Dedicated content-hashed
+check images are built without overwriting application images or restarting services.
+From /tmp, run the standalone checkpoint group:
+
+    PYTHONDONTWRITEBYTECODE=1 python3 /home/wibyte/wibyte-python-lab/scripts/check_foundation.py
+
+Add --prepare for missing pinned image preparation, which finishes before fixtures.
+The full check_local.py command and its existing CI step invoke this group mandatorily.
+Standalone foundation PASS means this checkpoint only, not P02 completion. Empty or
+skipped mandatory unittest suites fail; frontend registered-case policy is unchanged.
+
+Fixtures use an owned internal network, no published DB ports, tmpfs-only data and
+random disposable credentials. Only the DB container retains its bootstrap superuser.
+Tests receive distinct owner/runtime/worker identities in a clean environment, with
+an allowlisted read-only source snapshot, no Docker socket, provider data or private env.
+Cleanup verifies ownership and removes exact inspected IDs; errors, failed inspection
+and foreign labels cannot silently produce PASS. No broad prune/removal is used.
+Failure/timeout cleanup contracts use mocked Docker responses; actual fixture runs
+supply separate normal cleanup evidence. Fixture readiness polling is bounded.
+
+Bootstrap creates private wpl owned by wpl_migrator, plus wpl_app and wpl_worker with
+no owner/superuser/BYPASSRLS/create-db/create-role/replication privilege. Tests exercise
+actual attributes, schema ownership, denied DDL/owner-role assumption/escalation and
+version-ledger access, pooled commit/rollback/error, fresh/repeat/concurrent migration,
+actual advisory-lock waiting and disposable downgrade/re-upgrade/schema recreation.
+Tenant tables, RLS policies and worker domain permissions follow in later checkpoints;
+P02.1 alone does not prove tenant authorization.
+
+scripts/migrate_foundation.py requires an explicit migration URL and the already
+provisioned dedicated owner/private schema. It holds a transaction advisory lock over
+the Alembic version check and upgrade; versioning is separate in wpl.alembic_version.
+No import/startup auto-DDL, remote default or dotenv fallback exists. Do not run the
+migration tool against configured real infrastructure in P02. Disposable downgrade
+and target recreation are test operations, not a live-data rollback procedure.
+Provider compatibility, deployed activation and remote Actions remain unverified.
+Tenant business tables/policy/jobs/APIs/frontend/import/file-safety work remain later
+P02 checkpoints. No service restart or real migration is part of this checkpoint.

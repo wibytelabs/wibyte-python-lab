@@ -13,10 +13,11 @@ from uuid import uuid4
 ROOT = Path(__file__).resolve().parents[1]
 NODE_IMAGE = "node:22-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c"
 FILES = (
-    "alembic.ini", "backend/requirements.txt", "scripts/Dockerfile.checks",
+    "alembic.ini", "backend/alembic_foundation.ini", "backend/requirements.txt", "scripts/Dockerfile.checks",
     "scripts/setup.py", "scripts/test_setup.py", "scripts/test_deployment.py",
     "scripts/test_idle_defaults.py", "scripts/check_local.py",
-    "scripts/test_check_local.py", "scripts/run_frontend_tests.mjs", "frontend/package.json",
+    "scripts/test_check_local.py", "scripts/check_foundation.py",
+    "scripts/test_check_foundation.py", "scripts/migrate_foundation.py", "scripts/run_frontend_tests.mjs", "frontend/package.json",
     "frontend/package-lock.json", "frontend/index.html",
     "frontend/eslint.config.js", "frontend/vite.config.ts",
     "frontend/tsconfig.json", "frontend/tsconfig.app.json",
@@ -31,6 +32,8 @@ FRONTEND_TESTS = (
 TREES = {
     "backend/app": {".py"},
     "backend/alembic": {".py", ".mako"},
+    "backend/alembic_foundation": {".py", ".mako"},
+    "backend/tests/foundation": {".py"},
     "frontend/src": {".ts", ".tsx", ".css", ".svg", ".png", ".jpg", ".jpeg", ".webp"},
     "frontend/public": {".svg", ".png", ".ico", ".jpg", ".webp", ".txt"},
     "frontend/tests": {".mjs"},
@@ -229,7 +232,7 @@ def execute(prepare):
         copy_sources(ROOT, snapshot)
 
         run_checked("Runner failure/isolation contracts",
-                    [sys.executable, "-c", unit_code(snapshot, ["test_check_local.py"])],
+                    [sys.executable, "-c", unit_code(snapshot, ["test_check_local.py", "test_check_foundation.py"])],
                     timeout=90, env=env, cwd=snapshot)
         run_checked("Setup regressions (no skipped cases accepted)",
                     [sys.executable, "-c", unit_code(snapshot, ["test_setup.py"])],
@@ -250,6 +253,10 @@ def execute(prepare):
             }, env,
         )
         run_frontend_contracts(snapshot, env)
+        run_checked("Mandatory disposable Postgres foundation",
+                    [sys.executable, str(snapshot / "scripts/check_foundation.py"),
+                     *(["--prepare"] if prepare else [])],
+                    timeout=600, env=env, cwd=snapshot)
         frontend_settings = {
             "npm_config_userconfig": "/tmp/npm-user.conf",
             "npm_config_globalconfig": "/tmp/npm-global.conf",
