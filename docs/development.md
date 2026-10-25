@@ -703,3 +703,69 @@ This completes the isolated tenant invitation job plumbing, not pending-organiza
 platform provisioning, organization-create idempotency, public job-status routes,
 executive APIs, real provider setup or final P02 acceptance. Those gates remain
 explicitly pending. Run the complete local gate before recording this checkpoint.
+
+### P02.5 executive directory and tenant job-status reads
+
+Internal GET /v1/platform/organizations is a bounded cursor-paginated executive
+organization directory with status/type filters and literal case-insensitive name
+search (max 120 characters). It requires the current active user's explicit orgs
+platform capability, including expiry, in a bound platform transaction. Tenant
+admin status or JWT/user metadata does not grant this capability. The shared domain
+policy checks the actual application DB role and actor/platform/target context;
+there is no owner/request-header bypass. Explicit platform directory RLS already
+exists; this slice introduces no database grants or migrations.
+
+GET /v1/platform/organizations/{org_id} uses targeted platform scope and an explicit
+metadata projection. Directory list/detail do not grant tenant roster or job access.
+GET /v1/orgs/{org_id}/jobs/{job_id} uses current tenant membership plus existing
+job actor/admin RLS and returns only job ID/kind/state/delivery_status, bounded
+attempt counts, fixed error code and timestamps. It never selects ciphertext,
+private payload/key references, intent/dedup hash, lease owner or raw invite values.
+Cross-org, unknown and unauthorized job IDs share not_found. Persisted simulated,
+pending_integration and provider_accepted remain distinct; none imply inbox delivery.
+
+These routes use the existing real signature-verification dependency, error envelope,
+no-store/request ID middleware and internal /v1/public /api/v1 proxy contract.
+Foundation feature-off keeps them unmounted. HTTP tests use synthetic real ES256
+signatures, MockTransport JWKS only and actual wpl_app policy/role connections.
+Owner writes seed explicit executive capability fixtures and display-state cases;
+no user is automatically granted a platform role. No actual provider is contacted.
+
+Provision/create/PATCH/status/primary-transfer/recovery write routes, initial pending
+primary workflow, platform enqueue authority and organization-create idempotency
+remain pending. This read slice returns no placeholder provisioning/write success.
+
+### P02.5 versioned executive metadata and organization status
+
+PATCH /v1/platform/organizations/{org_id} accepts expected_version, reason and an
+explicit nonempty subset of name/contact_email/home_region. Extra fields (actor,
+role, primary designation, scope, charge/delete) are forbidden. Email/name inputs
+are normalized and bounded; versions reject boolean coercion. POST at the same
+organization path plus /status accepts expected_version, reason and active or
+suspended only. Both run actual verified identity in explicit target platform scope
+and require the current active executive's orgs capability; expiry/revocation and
+ordinary tenant admin/JWT metadata cannot bypass that requirement.
+
+Revision p0212_executive_metadata exposes only change_organization to wpl_app, with
+safe owner-definer search_path and independent fixed operation/context/input/grant
+validation. It grants no direct status/designation/epoch/table write or worker
+EXECUTE capability. The function locks the organization, rechecks authority and
+expected version, and performs update plus redacted audit in the same statement.
+The domain service wraps this in a savepoint so a caught audit failure cannot leave
+partial metadata. Existing triggers own version/epoch updates. Metadata audit lists
+changed field names, not contact values; status audit records from/to and versions.
+No-op edits retain version and do not create a spurious audit.
+
+An active or suspended state requires a verified active designated admin. Pending
+initial invitations cannot activate or be moved into an invalid non-pending state.
+recovery_required cannot be cleared by this ordinary orgs-capability status path;
+the reasoned protected recovery operation remains separate. This slice adds no
+implicit approval, invitation acceptance, primary transfer, real mail or side-effect
+job. Initial provisioning/idempotent create and protected recovery remain pending.
+
+Actual HTTP/domain tests use real synthetic ES256 verification and wpl_app, explicit
+fixture-only executive grants, metadata/status epochs/audit, validation/extra-field
+rejection, cached authority denial, pending-primary/recovery safeguards, two actual
+app connection race winners/conflicts, direct status/context bypass denial and a
+real CHECK failure proving audit/business rollback even when the caller catches it.
+No private configuration or running application is activated.

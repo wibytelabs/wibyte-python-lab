@@ -3,7 +3,7 @@ import base64
 import binascii
 from datetime import datetime, timezone
 import json
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -11,6 +11,9 @@ from sqlalchemy import text
 
 from backend.app.domains.authorization.context import RequestContext, RequestScope
 from backend.app.domains.authorization.policy import require_tenant_admin
+from backend.app.domains.organizations.directory import require_organization_directory
+from backend.app.domains.organizations.metadata import change_organization
+from backend.app.domains.organizations.requests import OrganizationPatch, OrganizationStatus
 from backend.app.domains.identity.types import VerifiedIdentity
 from backend.app.domains.identity.verification import InvalidIdentity
 
@@ -147,3 +150,60 @@ def cohorts(org_id: UUID,request: Request,actor: Actor,limit: Limit=50,cursor: C
             FROM wpl.cohorts m WHERE m.org_id=:org '''+PAGE_FILTER+
             ' ORDER BY m.created_at,m.id LIMIT :take'),parameters).mappings().all()
         return page(rows,limit)
+
+
+@router.get('/platform/organizations')
+def organization_directory(request: Request,actor: Actor,limit: Limit=50,cursor: Cursor=None,
+        status: Literal['pending','active','suspended','recovery_required'] | None=None,
+        organization_type: Literal['school','university','training','other'] | None=None,
+        search: Annotated[str | None,Query(max_length=120)]=None):
+    parameters=page_parameters(limit,cursor)
+    parameters.update(status=status,organization_type=organization_type,search=search)
+    with request.app.state.foundation_database.request_transaction(RequestContext(actor,RequestScope.PLATFORM)) as session:
+        require_organization_directory(session,actor)
+        rows=session.execute(text("""SELECT m.id,m.name,m.organization_type,m.home_region,m.status,m.version,m.created_at
+            FROM wpl.organizations m WHERE (CAST(:status AS text) IS NULL OR m.status=:status)
+            AND (CAST(:organization_type AS text) IS NULL OR m.organization_type=:organization_type)
+            AND (CAST(:search AS text) IS NULL OR strpos(lower(m.name),lower(:search))>0) """+
+            PAGE_FILTER+' ORDER BY m.created_at,m.id LIMIT :take'),parameters).mappings().all()
+        return page(rows,limit)
+
+
+@router.get('/platform/organizations/{org_id}')
+def executive_organization(org_id: UUID,request: Request,actor: Actor):
+    with request.app.state.foundation_database.request_transaction(RequestContext(actor,RequestScope.PLATFORM,org_id)) as session:
+        require_organization_directory(session,actor,org_id)
+        row=session.execute(text("""SELECT id,name,organization_type,home_region,status,contact_email,
+            primary_admin_membership_id,version,access_epoch,created_at,updated_at
+            FROM wpl.organizations WHERE id=:org"""),{'org':org_id}).mappings().one_or_none()
+        if row is None:raise APIError(404,'not_found','Requested resource is unavailable.')
+        return dict(row)
+
+
+@router.get('/orgs/{org_id}/jobs/{job_id}')
+def tenant_job(org_id: UUID,job_id: UUID,request: Request,actor: Actor):
+    with request.app.state.foundation_database.request_transaction(RequestContext(actor,RequestScope.TENANT,org_id)) as session:
+        tenant_record(session,actor,org_id)
+        row=session.execute(text("""SELECT id AS job_id,kind,state,delivery_status,attempts,max_attempts,
+            last_error_code,created_at,updated_at FROM wpl.jobs WHERE org_id=:org AND id=:job"""),
+            {'org':org_id,'job':job_id}).mappings().one_or_none()
+        if row is None:raise APIError(404,'not_found','Requested resource is unavailable.')
+        return dict(row)
+
+
+@router.patch('/platform/organizations/{org_id}')
+def edit_organization(org_id: UUID,body: OrganizationPatch,request: Request,actor: Actor):
+    with request.app.state.foundation_database.request_transaction(RequestContext(actor,RequestScope.PLATFORM,org_id)) as session:
+        result=change_organization(session,actor,org_id,version=body.expected_version,reason=body.reason,
+            operation='metadata',name=body.name,contact_email=body.contact_email,home_region=body.home_region)
+        if result is None:raise APIError(404,'not_found','Requested resource is unavailable.')
+        return result
+
+
+@router.post('/platform/organizations/{org_id}/status')
+def organization_status(org_id: UUID,body: OrganizationStatus,request: Request,actor: Actor):
+    with request.app.state.foundation_database.request_transaction(RequestContext(actor,RequestScope.PLATFORM,org_id)) as session:
+        result=change_organization(session,actor,org_id,version=body.expected_version,reason=body.reason,
+            operation='status',status=body.status)
+        if result is None:raise APIError(404,'not_found','Requested resource is unavailable.')
+        return result
