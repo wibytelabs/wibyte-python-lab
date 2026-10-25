@@ -13,7 +13,7 @@ from uuid import uuid4
 ROOT = Path(__file__).resolve().parents[1]
 NODE_IMAGE = "node:22-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c"
 FILES = (
-    "alembic.ini", "backend/alembic_foundation.ini", "backend/requirements.txt", "scripts/Dockerfile.checks",
+    "deploy/nginx.conf.template", "alembic.ini", "backend/alembic_foundation.ini", "backend/requirements.txt", "scripts/Dockerfile.checks",
     "scripts/setup.py", "scripts/test_setup.py", "scripts/test_deployment.py",
     "scripts/test_idle_defaults.py", "scripts/check_local.py",
     "scripts/test_check_local.py", "scripts/check_foundation.py",

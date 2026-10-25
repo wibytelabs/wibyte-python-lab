@@ -60,3 +60,35 @@ class FixtureRunnerTests(unittest.TestCase):
             self.assertIn("type=bind,src=/synthetic-source,dst=/app,readonly", args)
             self.assertIn("-i", args)
             self.assertFalse(any("docker.sock" in value or "--privileged" in value for value in args))
+
+
+class FoundationDiscoveryTests(unittest.TestCase):
+    def evaluate(self,modules,expected):
+        import tempfile
+        import sys
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            target=root/'backend/tests/foundation'
+            target.mkdir(parents=True)
+            for name,content in modules.items():
+                (target/name).write_text(content)
+            with patch.object(runner,'FOUNDATION_TESTS',expected):
+                code=runner.foundation_unit_code(root)
+            return subprocess.run([sys.executable,'-c',code],env={},capture_output=True,text=True,timeout=10)
+
+    def test_empty_module_beside_passing_module_fails(self):
+        passing="import unittest\nclass Fixture(unittest.TestCase):\n    def test_pass(self): self.assertTrue(True)\n"
+        result=self.evaluate({'test_pass.py':passing,'test_empty.py':''},('test_pass.py','test_empty.py'))
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('Empty mandatory foundation module',result.stderr)
+
+    def test_missing_declared_module_fails_before_green(self):
+        result=self.evaluate({},('test_missing.py',))
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('Missing or undeclared foundation test module',result.stderr)
+
+    def test_skipped_mandatory_foundation_case_is_nonzero(self):
+        code="import unittest\nclass Fixture(unittest.TestCase):\n    @unittest.skip('synthetic')\n    def test_skip(self): pass\n"
+        result=self.evaluate({'test_skip.py':code},('test_skip.py',))
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('skipped=1',result.stderr)

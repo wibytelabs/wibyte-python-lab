@@ -191,7 +191,8 @@ class GuardTests(unittest.TestCase):
         with connect() as owner:
             rows=owner.execute("""SELECT p.proname,p.prosecdef,p.proconfig,
                 has_function_privilege('wpl_app',p.oid,'EXECUTE'),has_function_privilege('wpl_worker',p.oid,'EXECUTE')
-                FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='wpl'""").fetchall()
+                FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                WHERE n.nspname='wpl' AND p.prorettype='pg_catalog.trigger'::regtype""").fetchall()
             self.assertTrue(rows)
             for name,definer,config,app,worker in rows:
                 self.assertFalse(app,name)

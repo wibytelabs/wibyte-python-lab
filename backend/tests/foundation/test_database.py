@@ -41,7 +41,10 @@ class ConfigurationTests(unittest.TestCase):
 import socket, sys
 from unittest.mock import patch
 with patch.object(socket.socket, 'connect', side_effect=AssertionError('network forbidden')):
+    from backend.app.domains.identity.settings import IdentitySettings
+    from backend.app.domains.identity.verification import build_verifier
     from backend.app.domains.identity.types import VerifiedIdentity
+    from backend.app.domains.authorization.context import RequestContext, RequestScope
     from backend.app.domains.authorization.policy import require_tenant_admin
     from backend.app.domains.organizations.service import set_member_status, replace_roles, complete_primary_transfer
     from backend.app.domains.cohorts.service import set_instructors
@@ -50,8 +53,10 @@ with patch.object(socket.socket, 'connect', side_effect=AssertionError('network 
     app = create_app(FoundationSettings())
     assert app.state.foundation_database is None
     app = create_app(FoundationSettings(enabled=True, application_database_url=postgres_url(
-        'postgresql://synthetic:synthetic@fixture-db/wpl_fixture', 'fixture')))
+        'postgresql://synthetic:synthetic@fixture-db/wpl_fixture', 'fixture')),
+        identity_settings=IdentitySettings(provider_url='https://provider.example.invalid',publishable_key='synthetic-public'))
     app.state.foundation_database.close()
+    app.state.foundation_verifier.close()
 assert not any(name in sys.modules for name in ('backend.app.main','backend.app.config','backend.app.db.database','docker'))
 """
         with tempfile.TemporaryDirectory() as directory:

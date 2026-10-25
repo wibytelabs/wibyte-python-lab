@@ -264,3 +264,175 @@ remain separate. Real runtime RLS, complete multi-role policy, token verificatio
 route policy proofs are still mandatory in P02.3. No new endpoint is exposed yet.
 Run scripts/check_foundation.py from /tmp for focused proof, then the full local gate
 before committing this checkpoint. Keep recorded counts tied to the actual output.
+
+
+### P02.3 identity verification slice (RLS/API work follows)
+
+New identity settings are explicit injected data, never dotenv/legacy fallback.
+WPL_AUTH_MODE defaults to provider_user when this feature's identity settings are
+requested. It requires WPL_AUTH_PROVIDER_URL and WPL_AUTH_PUBLISHABLE_KEY. JWT mode
+must be explicitly chosen and requires WPL_AUTH_ISSUER, WPL_AUTH_AUDIENCE,
+WPL_AUTH_JWKS_URL and WPL_AUTH_ALGORITHMS (ES256 and/or RS256 only). URLs require
+HTTPS, with loopback HTTP allowed for injected local fixtures. No HS secret,
+algorithm autodetection, debug-user header or public bootstrap endpoint is added.
+Disabled legacy/foundation imports do not resolve or require these settings.
+
+Identity returns only verified subject, optional verified email and known session /
+authentication timing. Roles, user_metadata and requested capabilities do not grant
+application authority. Provider-user verification calls only the configured user
+endpoint, allowing pending identities without the legacy profile-approval lookup.
+Legacy CurrentUser behavior stays intact. An opaque provider token does not expose
+verified session timing; account-wide last_sign_in_at is deliberately not used as
+recent-auth proof. Sensitive transfers require verified timing. JWT mode accepts an
+optional signed auth_time; absent timing remains unknown. Actual provider signing /
+claim semantics must be verified before activation; real projects remain untouched.
+
+JWT verification uses PyJWT 2.15.1 with cryptography 50.0.2. Signature, fixed issuer /
+audience, expiry, issued-at, optional nbf, subject UUID and session UUID are checked.
+Only configured asymmetric algorithms/public keys are usable. Embedded key URLs,
+critical extensions, malformed headers and unsupported algorithms are rejected.
+JWKS is fetched solely from configuration, bounded to 32 keys/128 KiB with finite
+cache TTL/unknown-key refresh interval and synchronized fetch. Fresh cached keys can
+verify during an outage until TTL; stale cache fails closed. This does not detect
+provider logout immediately. Current database state and future gateway epochs remain
+separate authority/revocation checks.
+
+The identity HTTP client has no environment proxy trust/redirect following, finite
+phase timeouts, bounded read-loop deadline and body caps. It requests identity
+encoding and rejects compressed responses before decoding. These are application
+bounds, not an OS-level guarantee against a blocked system resolver. No provider
+body/token/DSN details are included in public verification errors. Invalid tokens
+map to 401; transient/bad provider responses map to 503. Runtime RLS, pooled trusted
+context and /v1/me are still the next P02.3 slice, not established by these tests.
+
+Every mandatory foundation module is explicitly registered; missing, undeclared or
+empty modules and skipped cases fail without a fixed case-count guard. New modules
+must update FOUNDATION_TESTS in scripts/check_foundation.py.
+
+Mandatory identity tests use real generated ES256/RS256 signatures and injected
+httpx synthetic transports for provider/JWKS cases. Cache-clock advances test rotation,
+outage and refresh rate without sleeping. Injected timeout/redirect/body fixtures
+are not a real provider outage benchmark. The dependency preparation probe separately
+verified ES256 and AES-GCM offline in the pinned Python 3.14 image. Actual invitation
+payload encryption/key-provider implementation still belongs to P02.4.
+
+### P02.3 transaction context slice (scoped RLS/API still pending)
+
+RequestContext pairs a VerifiedIdentity with a server-selected RequestScope enum
+(global, platform, tenant or personal) and an optional typed organization UUID.
+Tenant scope requires an organization; global and personal scopes prohibit one.
+Platform scope can carry an explicit target organization or a directory scope.
+This context does not grant permissions: current DB state and scoped RLS/application
+policy must independently authorize access. Never construct it from caller actor,
+role, capability or GUC names. No worker authority is added by this request scope.
+
+FoundationDatabase.request_transaction binds only four fixed settings through
+parameterized set_config calls: wpl.actor_id, wpl.scope_kind, wpl.org_id and
+wpl.auth_time. The last value is verified authentication timing, or empty when
+unknown. All values are transaction-local; every scope overwrites every field.
+The existing session/transaction context managers commit or roll back and release
+the checked-out connection, including BaseException cancellation. Keep the yielded
+session within this boundary; no SET ROLE or session-persistent context is used.
+
+Mandatory disposable Postgres tests use actual wpl_app with a pool of one and
+assert reuse of the same backend PID across actors/scopes. Commit, ordinary Python
+failure, SQL error, raised CancelledError and actual PostgreSQL statement timeout
+must clear actor/org/auth timing before the next checkout. The cancellation test
+raises the request cancellation exception at the transaction boundary; it is not
+an HTTP disconnect or transport cancellation test. Tests also exercise missing
+org/timing values and global/personal/platform scope transitions without trusting
+raw actor dictionaries. Direct DB credentials remain a trusted server boundary;
+custom settings are not a defense against compromise of those credentials.
+
+Context lifetime proof alone is not tenant isolation proof. Scoped production RLS,
+API identity/context wiring and the two-org authorization matrix remain pending.
+
+### P02.3 scoped read RLS slice (mutation/API policies still pending)
+
+Revision p0204_read_rls grants the non-owner application role SELECT on scoped
+organization/cohort data and selected user/capability columns. User email and
+platform grantor/reason columns are not included in these read grants. No write,
+worker, secret-payload, audit or migration-map authority is added by this slice.
+Table RLS remains enabled. Missing, malformed or incompatible actor/scope/org
+settings return no rows; SQL UUID context parsing does not cast unchecked text.
+
+Only six boolean policy entry points receive app EXECUTE. They run as the schema
+owner with a fixed pg_catalog,wpl search_path and qualified objects, avoiding
+recursive RLS table lookups. Internal context/permission helpers and existing
+trigger functions remain private; worker receives no helper execution. The trusted
+migration owner deliberately bypasses RLS for policy helper queries and synthetic
+fixture setup. Runtime ownership/BYPASSRLS is neither granted nor required.
+
+Active tenant admins can read all cohorts in their organization. Instructors need
+an active instructor assignment and organization role for cohort/roster access;
+a separate student assignment does not inherit their instructor authority. Students
+read their own membership/roles/assignments. Global identity scope permits only
+own user/membership summaries (including pending state). Personal scope grants no
+tenant data. Directory executives require an unexpired explicit orgs capability in
+platform scope; this does not supply tenant impersonation or roster access.
+Recovery roster metadata requires an explicit recovery capability and target org.
+No recovery mutation or authority-grant endpoint is provided by this slice.
+
+Mandatory read RLS tests use production policies with actual wpl_app transactions
+and synthetic two-org, multi-role fixtures. They cover current user/member status,
+capability expiry, invalid context, private-column/helper denials and absence of
+mutation grants. Owner connections seed test records only. The older composite-FK
+fixture still temporarily grants narrow constraint-test writes; it restores prior
+read grants and is not counted as production mutation authorization proof. Scoped
+write policies, service runtime transactions and HTTP comparisons remain pending.
+
+### P02.3 HTTP read slice and pending identity mirror
+
+The shared versioned router is backend.app.foundation.api.router, internally /v1.
+The independent factory mounts it only when FoundationSettings.enabled is true,
+with explicit IdentitySettings and optional trusted HTTP transport injection for
+fixtures. Verification still uses the production verifier; request headers cannot
+select a transport or bypass it. Construction does not connect, migrate or load
+legacy/private environment. Lifespan verifies the non-owner DB identity and closes
+both DB pool and verifier resources. Legacy main/startup routes remain untouched;
+conditional mounting for a later approved activation must reuse this router.
+
+GET /v1/me verifies bearer identity, binds GLOBAL context and inserts only the own
+UUID if absent. Revision p0205_identity_mirror grants INSERT(id) with an own-subject,
+global-scope, pending-default policy helper. It grants no approval, role, email or
+identity-remapping authority. Existing records use ON CONFLICT DO NOTHING; no
+request-driven version churn or email-based lookup occurs. Email/metadata/session
+claims are not returned. Pending/blocked users get their own status and membership
+summary with effective can_enter=false and no capabilities. This narrowly scoped
+identity insert supersedes the prior read-only slice's absence of all write grants;
+privileged tenant mutations remain denied until their own policies are implemented.
+
+GET /v1/orgs/{o} requires an active user/membership/org; contact and primary-member
+fields are omitted for non-admin roles. GET /v1/orgs/{o}/members is the P02 minimal
+admin-only transfer-selection list, not the P05 instructor/full directory product.
+GET /v1/orgs/{o}/cohorts supplies the small read surface needed to compare HTTP and
+actual assignment-aware RLS. No cohort management endpoints are introduced here.
+Lists use {items,next_cursor}, limit 1..100 and parameterized (created_at,id) cursor
+ordering. The /me membership summary uses the same bounded pagination. New indexes
+support the tenant membership/cohort page ordering. Invalid cursor syntax returns
+400, semantic validation 422, missing identity 401, explicit policy denial 403,
+inaccessible resources 404 and identity/data unavailability sanitized 503.
+
+Responses carry no-store, a server-generated request ID and the shared error
+{code,message,request_id,field_errors?} shape. Validation errors do not echo input;
+DB/provider/token details are omitted. Header actor/role/org spoofing is ignored.
+A cached verified token does not override current DB suspension on new requests.
+These checks do not claim immediate provider logout or live gateway revocation.
+
+Current nginx source maps public /api/v1/... to internal /v1/... by its existing
+location /api/ and trailing-slash loopback proxy_pass. The runner snapshots that
+non-secret template explicitly. Tests inspect this source mapping and exercise
+internal routing; they do not launch a reverse proxy or claim browser/provider
+smoke. Real authenticated browser/provider smoke remains NOT RUN, and remote
+Actions execution remains separate evidence. Synthetic HTTP tests pass real signed
+tokens through the production verifier and factory into actual wpl_app RLS using
+only injected JWKS transport, the disposable DB and owned internal network.
+
+The own-user SELECT predicate permits the verified actor UUID without first
+requiring a stored user row. PostgreSQL checks SELECT policy for proposed rows in
+INSERT ... ON CONFLICT (id) DO NOTHING, before a first mirror is stored. Checking
+existence inside the permission helper makes that first request fail despite a
+valid INSERT policy. Existing table scans still return only actual rows. A direct
+runtime regression executes the same statement twice, proves one pending mirror,
+and rejects other-subject insertion and approval writes. No extra table/column
+privileges or authority grants are added by this predicate correction.

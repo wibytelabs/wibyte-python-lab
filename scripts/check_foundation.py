@@ -27,6 +27,31 @@ def checked(label, command, env, *, timeout=30, capture=False, check=True, input
         raise shared.CheckError(f"{label}: failed with exit code {result.returncode}.")
     return result
 
+FOUNDATION_TESTS = (
+    'test_context.py', 'test_database.py', 'test_guards.py', 'test_http.py', 'test_identity.py',
+    'test_read_rls.py', 'test_schema.py', 'test_services.py',
+)
+
+
+def foundation_unit_code(root):
+    directory=root/'backend/tests/foundation'
+    return (
+        "import pathlib,sys,unittest; "
+        f"sys.path.insert(0,{str(root)!r}); directory=pathlib.Path({str(directory)!r}); "
+        f"expected={FOUNDATION_TESTS!r}; "
+        "actual={p.name for p in directory.glob('test_*.py')}; "
+        "actual==set(expected) or sys.exit('Missing or undeclared foundation test module'); "
+        "loader=unittest.TestLoader(); suite=unittest.TestSuite(); " +
+        "; ".join(
+            f"cases=loader.discover(str(directory),pattern={name!r}); "
+            "cases.countTestCases() or sys.exit('Empty mandatory foundation module'); suite.addTests(cases)"
+            for name in FOUNDATION_TESTS
+        ) +
+        "; result=unittest.TextTestRunner(verbosity=2).run(suite); "
+        "sys.exit(0 if result.wasSuccessful() and not result.skipped else 1)"
+    )
+
+
 class Fixture:
     def __init__(self, env):
         self.env = env
@@ -157,10 +182,7 @@ def execute(prepare):
         fixture = Fixture(env)
         try:
             fixture.start()
-            code = ("import unittest,sys; suite=unittest.defaultTestLoader.discover('/app/backend/tests/foundation',pattern='test_*.py'); "
-                    "suite.countTestCases() or sys.exit('No foundation tests discovered'); "
-                    "result=unittest.TextTestRunner(verbosity=2).run(suite); "
-                    "sys.exit(0 if result.wasSuccessful() and not result.skipped else 1)")
+            code = foundation_unit_code(Path('/app'))
             fixture.test(image, snapshot, code, "Foundation Postgres/configuration/schema tests")
             fixture.sql("Recreate only the owned fixture schema", "DROP SCHEMA wpl CASCADE; CREATE SCHEMA wpl AUTHORIZATION wpl_migrator; REVOKE ALL ON SCHEMA wpl FROM PUBLIC; GRANT USAGE ON SCHEMA wpl TO wpl_app,wpl_worker;")
             fixture.test(image, snapshot, "import os; from backend.app.foundation.migrate import migrate; "

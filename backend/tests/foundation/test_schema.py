@@ -47,9 +47,12 @@ class SchemaTests(unittest.TestCase):
             with connect(kind) as runtime:
                 for name, _ in rows:
                     with self.subTest(role=kind, table=name):
-                        with self.assertRaises(psycopg.errors.InsufficientPrivilege):
-                            runtime.execute(sql.SQL('SELECT * FROM wpl.{}').format(sql.Identifier(name)))
-                        runtime.rollback()
+                        try:
+                            visible = runtime.execute(sql.SQL('SELECT * FROM wpl.{}').format(sql.Identifier(name))).fetchall()
+                        except psycopg.errors.InsufficientPrivilege:
+                            runtime.rollback()
+                        else:
+                            self.assertEqual(visible, [], 'Unbound runtime must see no private rows')
 
     def test_pending_primary_circular_binding_and_single_designation(self):
         with connect() as owner:
@@ -75,6 +78,10 @@ class SchemaTests(unittest.TestCase):
         # constraints. These are not production/application authorization policies.
         tables = ('organization_roles','cohort_memberships','primary_admin_transfers','invitations')
         with connect() as owner:
+            # Preserve the production read grants across this constraint-only fixture.
+            prior_select = {name: owner.execute(
+                "SELECT has_table_privilege('wpl_app',%s,'SELECT')", ('wpl.'+name,)).fetchone()[0]
+                for name in tables}
             first, second = seed_org(owner), seed_org(owner)
             for name in tables:
                 owner.execute(sql.SQL('GRANT SELECT,INSERT ON wpl.{} TO wpl_app').format(sql.Identifier(name)))
@@ -109,6 +116,8 @@ class SchemaTests(unittest.TestCase):
                 for name in tables:
                     owner.execute(sql.SQL('DROP POLICY p022_constraint_fixture ON wpl.{}').format(sql.Identifier(name)))
                     owner.execute(sql.SQL('REVOKE ALL ON wpl.{} FROM wpl_app').format(sql.Identifier(name)))
+                    if prior_select[name]:
+                        owner.execute(sql.SQL('GRANT SELECT ON wpl.{} TO wpl_app').format(sql.Identifier(name)))
 
     def test_primary_reference_and_membership_placeholder_checks(self):
         with connect() as owner:

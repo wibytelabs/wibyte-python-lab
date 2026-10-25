@@ -32,3 +32,7 @@ watchfiles==1.2.0
 websockets==17.0.1
 psycopg[binary]==3.3.6
 psycopg-binary==3.3.6
+PyJWT[crypto]==2.15.1
+cryptography==50.0.2
+cffi==2.1.1
+pycparser==3.0
