@@ -1,3 +1,260 @@
+# P02 completion evidence — durable tenant jobs milestone
+
+Status: IN PROGRESS, approximately 53%. The isolated tenant invitation job pipeline
+now has encrypted payloads, scoped idempotency, atomic outbox enqueue, restricted
+worker leases, fenced transitions, bounded retry and synthetic crash reconciliation.
+Organization-create idempotency/platform provisioning, remaining P02.5–P02.8 gates,
+final acceptance and architect review are still required. Do not advance to P03.
+
+## Source identity and bounded change
+
+- Accepted P01: 0fc1ca53932b94fdcb91ddc20313cbb85ac7edbd.
+- Previous mutation implementation: cc4e5d3834e70251965f8e75655188a2e8c26870.
+- This milestone parent/report: f2da0b0c4a651a44cf84316f79dc9b95a606ede1.
+- Jobs implementation: 30179670f437cfbe162ba903df9c735d83001bce; branch codex/p02-tenant-foundation.
+- The subsequent report-only commit records this evidence. Exactly 24 intended
+  implementation paths were staged; unrelated untracked documents/work are preserved.
+
+Revisions p0207–p0211 extend the private foundation chain only. Existing legacy
+SQLite migrations, private configuration, application image and running lab remain
+unchanged. Imports construct neither workers nor provider/key clients nor database
+connections. Foundation feature activation is still off by default.
+
+## Implemented behavior and actual proof
+
+PayloadCipher uses explicit injected key references and AES-256-GCM with a fresh
+nonce and authenticated version/key/scope/actor/operation/payload/purpose binding.
+There is no default key, legacy signing-key fallback or concrete production secret
+provider. Bounded JSON/envelope validation, tampering, cross-scope replay, recorded
+key rotation and missing/wrong-key failures were tested. Payload and provider error
+representations are sanitized. Actual private-schema ciphertext round-trips; app
+ciphertext reads remain denied. Synthetic keys never leave fixture memory.
+
+Tenant idempotency is limited to member status, role replacement and instructor
+assignment. Current bound actor/admin scope is checked before and after a complete
+actor/org/operation/key advisory lock. The composite primary key is the final
+uniqueness guard. Same-key/same-body requests replay one saved public result;
+changed input conflicts. Raw request bodies, tokens and arbitrary receipt fields
+are not stored. Callback, business mutation, audit and receipt share a savepoint
+and outer transaction. Current permission is required even for cached results.
+Actual two-request concurrency, namespace separation, invalid receipt rollback,
+outer rollback, new-pool replay and immutable/secret-field denials passed. This is
+not organization-create idempotency proof; T14 remains pending.
+
+Tenant invitation preparation resolves/encrypts outside the DB transaction. Enqueue
+rechecks exact pending invitation/org/recipient/token digest/expiry and current
+actor. A stable delivery UUID serializes retries. Ciphertext, queued job, pending
+outbox and redacted audit commit with business/idempotency state. Changed intent
+and legacy/unverified job collisions are not adopted. Actual outbox unique failure
+and outer rollback leave no orphan payload/job or partial business change. Metadata
+reads are scope/actor/admin restricted; application code cannot dispatch or complete.
+Only existing pending tenant invitations are supported here. Initial pending-org
+platform provisioning remains P02.5 work.
+
+Workers have explicit EXECUTE entry points, not owner/table privileges. Shared
+current actor/global/org/member/admin checks use stored job scope/actor; spoofed
+worker session context cannot substitute another user. Claim uses row locking and
+SKIP LOCKED, due-time checks, batch 1..20, lease 5..300 seconds, attempts, owner and
+monotonic generation. Claim dispatches durable outbox intent and audits the lease;
+this is not mail delivery. Expired claims can be reclaimed; stale/foreign/expired
+leases cannot renew, load ciphertext or complete. Exhaustion dead-letters; current
+actor revocation cancels. Direct app/worker queue mutations, app worker-function
+calls and internal helper execution remain denied. Safe search_path, owner and
+exact EXECUTE grants were inspected. Actual competing claims, held-row skipping,
+rollback, expiry/reclaim and generation denial passed without long sleeps.
+
+Fenced payload access returns a bound envelope only after a short worker transaction.
+After decrypting outside the DB, execution renews and rechecks current actor and
+exact invitation plus complete intent hash immediately before adapter I/O. Retry
+codes are fixed, not provider diagnostics; exponential delay starts at 5 seconds,
+caps at 300 and dead-letters at max attempts. Transition/audit rollback is atomic.
+Global/member/role/org revocation, wrong invitation/token, expired/revoked target,
+late completion, backoff/cap and real statement errors were exercised.
+
+process_delivery requires an explicit cipher and adapter. No daemon or real mail
+adapter is installed/wired. Adapter calls receive a 10-second timeout contract and
+a stable job UUID across lease generations. Adapter/provider I/O and key resolution
+occur outside DB checkout. A test-only durable SQLite provider store records only
+operation ID/request digest and deduplicates by a unique operation key. Tests crash
+after fake acceptance, then reconstruct worker pool/key-provider/adapter objects;
+retry reconciles one simulated effect. Overlapping stale/reclaimed workers and a
+real PostgreSQL CHECK failure after fake acceptance also reconcile one effect while
+only the current lease acknowledges. This proves this explicit fake adapter's dedup
+contract, not universal exactly-once external delivery from database leases.
+
+Acknowledgement persists simulated or provider_accepted separately from job state.
+Fake receipts and enqueue replay remain simulated; no Delivered claim is inferred.
+provider_accepted has no concrete provider implementation in this milestone and
+would mean acceptance only, not inbox delivery/read. Revocation can race external
+I/O after the final DB check; operation-specific provider reconciliation and actual
+provider policies remain required before activation. Historical control transitions
+without an adapter acknowledgement retain pending_integration.
+
+## Actual full-gate execution
+
+Developer ran from /tmp:
+
+    PYTHONDONTWRITEBYTECODE=1 python3 /home/wibyte/wibyte-python-lab/scripts/check_local.py
+
+Full log: /home/wibyte/wibyte-python-lab/work/p02-full-evidence-0qRUbBkQ/P02.4-jobs-full-checks.log
+Raw log SHA256: 7303693ebb2a4a8d244348a8d8acdade0d57d3638e358e4e4070d073e3a04f19.
+The guarded recorder checks source/log/prior report hashes, actual group counts,
+cleanup markers and staged/committed bytes. Preparation read these sources/logs
+and wrote artifact scripts/preview; the developer executed application checks and
+original-checkout mutations in the terminal workflow.
+
+| Mandatory group | Actual passes |
+| --- | ---: |
+| Runner contracts/discovery/isolation | 23 |
+| Setup regressions | 16 |
+| Legacy backend/idle | 12 |
+| Registered frontend, four modules | 46 |
+| Foundation, fifteen modules | 146 |
+| Total | 243 |
+
+All mandatory cases passed with no skips. The 146 foundation cases include the prior
+93 plus 53 new cases (9 crypto/storage, 10 idempotency, 10 enqueue, 8 leases,
+8 transitions, 8 execution). Separate recreated-target migration/role smoke passed;
+it is not an extra test case. Focused passes below are not added to the full total.
+Mandatory discovery still rejects missing/empty modules and skipped cases without
+requiring fixed runtime test counts.
+
+Build passed (87 modules); locked npm ci installed 170 packages. Lint passed with
+0 errors and the same 2 App.tsx:1159/1165 loadGitStatus dependency warnings. JS bundle
+remains 801.77 kB / 215.19 kB gzip with a >500 kB warning. Starlette's httpx TestClient
+deprecation remains visible. Warnings were not suppressed. No dependency upgrade
+was introduced by this milestone. Earlier development failures remain in history.
+
+## Runtime, isolation and cleanup
+
+Unchanged PostgreSQL 17.11 image:
+postgres@sha256:639ab7ceb90e13123085b741fb31ef493fba25463002f6da665352e7b534b652.
+Actual fixture: wpl_app / wpl_fixture, Psycopg 3.3.6 binary; worker tests connect as
+wpl_worker. App/worker non-owner/non-super/BYPASSRLS/create/replication attributes and
+DDL/escalation denials passed. wpl_migrator owns the private schema, not web/worker
+runtime. Check image ID:
+sha256:bfc852f33cf0fbc9ff7a61897d599682ac71bc4a2a8e15ba1bc8d2268b896d2e.
+Node runtime ID:
+sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c.
+
+Final owned DB container
+130a504a7ec9795ff5c38ae40f4158749edfdb96a2d61d063f9476db34f29c97
+and internal network
+6921b571787166c045933e67bc4a4535bfc114f5aec25b67616ff65f46c7e2f8
+were inspected and removed by exact owned ID; tmpfs data was discarded. No published
+ports or host data/socket mounts. Read-only allowlisted source snapshot, synthetic
+identities/environment and owned internal network only; legacy checks network-none.
+Test-only provider SQLite files live in owned temporary directories and are removed.
+No live DB/student files/provider requests/private env changes/Compose up/service
+restart/global prune/original labs.wibyte.in actions were performed. Mocked runner
+failure/cleanup contracts remain distinct from actual Postgres/fixture cleanup proof.
+
+## Focused execution provenance (not additional full-gate cases)
+
+- encryption: 102 foundation passes; /home/wibyte/wibyte-python-lab/work/p02-crypto-evidence-HiVh6Ge7/crypto-checks.log; raw SHA256 532effc211a32c178a6ca0046795281c7d73e0b0efd9ca27730ca0f287e83267.
+- idempotency: 112 foundation passes; /home/wibyte/wibyte-python-lab/work/p02-idempotency-evidence-lEr6DLkt/idempotency-checks.log; raw SHA256 a034391b5efbd8cee204f700f82a7e6ab3d61ce70430a4c5f85cc6a8711546b5.
+- enqueue: 122 foundation passes; /home/wibyte/wibyte-python-lab/work/p02-enqueue-evidence-c3EIUlqy/enqueue-checks.log; raw SHA256 8ee24f13399250c33d39cd8efa43a675f5b7b1c66551bed7090a2c77121a48c0.
+- leases: 130 foundation passes; /home/wibyte/wibyte-python-lab/work/p02-leases-evidence-WZYVNGmY/leases-checks.log; raw SHA256 bb0cf70af85422a788232cee503ad9085d0f60e00294930dc2707ce7d1cda886.
+- transitions: 138 foundation passes; /home/wibyte/wibyte-python-lab/work/p02-transitions-evidence-Jj2S9ojg/transitions-checks.log; raw SHA256 2dcba399bde12990caaffabc776510f1e49cce18a98e79594d24e86c15aef88a.
+- execution: 146 foundation passes; /home/wibyte/wibyte-python-lab/work/p02-execution-evidence-6L0lsdgu/execution-checks.log; raw SHA256 02bc3197620cb4ca1b6d55f3b4dff63673878e8145646db1aa374978b1f80dfc.
+
+## Current T01–T35 ledger (implemented surfaces only)
+
+| ID | Current result and limit |
+| --- | --- |
+| T01 | PASS this milestone: 243 tests, build/lint, existing warnings; phase incomplete. |
+| T02 | PASS import/factory tests with socket connect blocked, no legacy modules/DB files. |
+| T03 | PARTIAL: disabled factory and retained legacy checks pass; shared-router activation mounting pending. |
+| T04 | PASS fresh/repeat/concurrent/advisory migration, no import DDL, recreation. |
+| T05 | PASS actual non-owner app/worker attributes and DDL/escalation denials. |
+| T06 | PASS actual composite constraints under explicit disposable write fixture; not mutation RLS proof. |
+| T07 | PASS implemented HTTP identity/read surfaces, pending own /me, invalid identity/errors. |
+| T08 | PASS actual asymmetric crypto and synthetic claim/key/metadata negative matrix. |
+| T09 | PASS synthetic bounded rotation/outage/cache paths; real project compatibility unverified. |
+| T10 | PASS ordinary tenant scope: actual read DB/HTTP matrix plus positive runtime member/role/instructor writes and cross-org/non-admin denials. Executive/primary write scopes remain P02.5. |
+| T11 | PASS scoped pool commit/rollback/error/raised cancellation/PG timeout and HTTP reuse; no transport-disconnect claim. |
+| T12 | PASS implemented new reads: current user/member suspension blocks cached-token requests; epoch guard tests retained. |
+| T13 | PENDING transactional executive provisioning/invite/outbox workflow. |
+| T14 | PENDING org operation idempotency/concurrency; identity mirror repeat is not this criterion. |
+| T15 | PASS ordinary implemented runtime service/direct SQL paths reject protected primary changes; transfer/recovery HTTP remains P02.5. |
+| T16 | PARTIAL: runtime member-version race now passes; protected transfer races/service confirmation remain owner-fixture proof until P02.5 runtime/API transfer. |
+| T17 | PASS DB active-primary and audited security-recovery invariants; recovery API pending. |
+| T18 | PASS implemented ordinary paths: DB final-instructor races, runtime instructor replacement/history, direct SQL guard and actual assignment-aware read matrix. |
+| T19 | PENDING explicit reasoned/audited recovery mutation; scoped metadata read alone is insufficient. |
+| T20 | PASS implemented tenant invitation pipeline: actual business/audit/receipt/payload/job/outbox rollback, committed retry and restart reconciliation; platform org-create workflow pending. |
+| T21 | PASS actual restricted-worker competing claims, SKIP LOCKED, expiry/reclaim/late completion fencing and durable fake-adapter dedup/crash reconciliation; no universal external exactly-once claim. |
+| T22 | PASS bounded batch/lease/attempts, persisted exponential retry/cap/dead-letter, stored scope/actor/global/member/role/org checks and explicit fixture timestamps without long sleeps. |
+| T23 | PASS implemented tenant payload/service/receipt/audit/error paths: bound AES-GCM, explicit synthetic key provider, current target/intent checks and simulated status. Public provisioning/job APIs and imported tokens remain later gates. |
+| T24 | PENDING foundation frontend vertical slice. |
+| T25 | PARTIAL HTTP spoofing/pending/cross-org denial passes; frontend/deep-link UI pending. |
+| T26 | PASS bounded source/internal-route prefix contract; no running proxy/browser smoke. |
+| T27 | PENDING explicit fixture SQLite dry-run and historical populated-chain proof. |
+| T28 | PENDING disposable import/count/ID/repository-map idempotency and negative matrix. |
+| T29 | PENDING imported fixture token encryption and explicit personal/mapping preservation. |
+| T30 | PENDING wired safe file primitives and negative cases. |
+| T31 | PENDING atomic replacement and ordinary file behavior proof. |
+| T32 | PENDING actual general-file-route primitive wiring; prior FormData/auth checks retained. |
+| T33 | PASS current snapshot/owned isolated Postgres fixtures; later new modules must register. |
+| T34 | PASS current local mandatory groups/discovery/frontend policy; remote Actions UNVERIFIED. |
+| T35 | PASS implemented failure/timeout/cleanup contracts and actual cleanup; no app service mutation. |
+
+## Remaining work and review limits
+
+Next is P02.5 executive provisioning and protected transfer/recovery: actual runtime
+policies/services/APIs, organization-create idempotency/concurrency, initial pending
+primary invitation/outbox and explicit scope/confirmation/recent-auth/version/audit.
+Public redacted job-status routes must preserve simulated/queued/acceptance semantics.
+The current tenant-only queue does not authorize platform initial provisioning.
+
+P02.6 still requires minimal feature-gated frontend and shared-router activation
+wiring; P02.7 explicit synthetic SQLite dry-run/import rehearsal and populated-chain
+proof; P02.8 wired safe file-route primitives. Existing owner transfer fixtures are
+not a substitute for protected runtime/API transfer. All remaining T01–T35 gates
+must be completed and this report updated before architect review. Stop before P03.
+
+Authenticated browser/provider smoke: NOT RUN, as previously deferred by developer.
+Remote Actions execution: UNVERIFIED; local evidence remains separate.
+Real issuer/key/timing/PG-provider compatibility/connection limits: UNVERIFIED.
+Real mail/activation grants/deployment/live backup/export/import: NOT RUN.
+Keep the foundation feature off and legacy SQLite/Docker lab usable. Fixture-only
+schema downgrade proof does not authorize real academic-data deletion/down-migration.
+This is a partial checkpoint report, not phase acceptance.
+
+## Exact changed implementation paths/hashes
+
+- backend/alembic_foundation/versions/p0207_idempotency.py — SHA256 a98529741104f534766f2fced22177fb164f215538df1eb9508a2f95bfbf2e5e
+- backend/alembic_foundation/versions/p0208_enqueue.py — SHA256 1020dfa4d1caaa7ac902654ec6ee34586d237ea7cb8fd38280cb0f15e9db0c21
+- backend/alembic_foundation/versions/p0208_enqueue.sql — SHA256 0c61a93580be791f70cc15573ae386ce23c551d0b5dc645e0fe264fff4f13f81
+- backend/alembic_foundation/versions/p0209_worker_leases.py — SHA256 01a2cad4fe5be1de879805b7d53ccd5e326126daadfc9e230d6a61bc4da534de
+- backend/alembic_foundation/versions/p0209_worker_leases.sql — SHA256 fef9ed28582555e4e92be8a2e2c4a98fe81af0069a704cd5dde72b1d5326664d
+- backend/alembic_foundation/versions/p0210_worker_transitions.py — SHA256 4166d786312262b9e074638bddb03c3de68fdfdf39e6f1540b03db6a79fb205b
+- backend/alembic_foundation/versions/p0210_worker_transitions.sql — SHA256 4e28abd56290851fd0ea1c606dcf4adfed1beb1f39e8ae4cfeaeb08cb4036068
+- backend/alembic_foundation/versions/p0211_delivery_execution.py — SHA256 ccfcd643e45d8b3fad76c552d98c97e2001462dea0f6000aa1fb4ae2c8302462
+- backend/app/domains/jobs/enqueue.py — SHA256 703204039b2e6f52eb02b68e32d01ab47530680327f4bf95d433b18433f28c51
+- backend/app/domains/jobs/execution.py — SHA256 5fdd53c179c3e16e8828ced9c0ed46c873e9c672472f270c07b09a28d90e866d
+- backend/app/domains/jobs/idempotency.py — SHA256 b7e42e775430be9df7211e6ea98be1c10eb4f8dddcfdf87d65d68b47f9c0291c
+- backend/app/domains/jobs/leases.py — SHA256 addaadde672c000d01084df785e15d716c306e87da67cf72ddc3c3b82a32671b
+- backend/app/domains/jobs/payloads.py — SHA256 3946a5de6de4e299d817a7975954bed860470646a69d90b5408bf8fbcbc1ab4e
+- backend/app/domains/jobs/transitions.py — SHA256 5d75ccba4092051aa21323fd6defa562044eb5e40fdec22693659dc57ad508d1
+- backend/tests/foundation/test_database.py — SHA256 606db3f112aff875c89c1bccdd67ca64b3c9809bbd0974a6af20650265a056e4
+- backend/tests/foundation/test_enqueue.py — SHA256 e20888e96e34c052617c542259b1be26c0de02a99cf7c2a307566752dada7f0e
+- backend/tests/foundation/test_idempotency.py — SHA256 9a97f0d37b29395f12961e4a86e97c0d0a2d6326426871bc8223d0c1dde6bd1c
+- backend/tests/foundation/test_payloads.py — SHA256 d72e84953d05870d85356ff114becad350bb66f30a822c3f49d20a1fe50326d9
+- backend/tests/foundation/test_read_rls.py — SHA256 dee3a4da709aadffd877d36da769cb99d4957595b04d30c34df6fe6001cf6036
+- backend/tests/foundation/test_worker_execution.py — SHA256 26e97c5251cb4a6517c7d6acaceeec89093a39ddebf696cf0462e203a4b49bfb
+- backend/tests/foundation/test_worker_leases.py — SHA256 795a5e3108a56ac908e59aea0c99fb507d5c52412c2afe3190752ab875a455b0
+- backend/tests/foundation/test_worker_transitions.py — SHA256 959928abf33390d910ff1c1f2bd99e29ae431d3b8a54dc00fb9e34dd609fa4de
+- docs/development.md — SHA256 25d62db5ac009644b63abf79606313bba354101dcdf5b65d334d913b0cd272ee
+- scripts/check_foundation.py — SHA256 93275a12d670ea0e26beb9f9d71198ff5be43bf54bf6283d9c1e9b126ffaf50e
+
+## Previous checkpoint report (historical evidence)
+
+The current sections supersede earlier pending-state/count statements.
+Prior report SHA256: ba5001a0392b72ad55dfc2953f35166535b37db184c1fc853e82f913521c6752.
+
+<details>
+<summary>Preserved mutation, identity/read and earlier checkpoint reports</summary>
+
 # P02 completion evidence — ordinary tenant mutation milestone
 
 Status: IN PROGRESS, approximately 41%. This milestone adds actual application-role
@@ -793,6 +1050,8 @@ academic-data downgrade/rollback plan. No phase beyond P02 is authorized here.
 - scripts/check_local.py — SHA256 45fb9ad481fe4653701699a8e598b3ef0ecabe49d9295456c603c916fc49282a
 - scripts/migrate_foundation.py — SHA256 99c224e817e7cd5d577051dcc12e867f3bdf336c6797ade6330938b9be087f27
 - scripts/test_check_foundation.py — SHA256 9db6bd94312fe62e7a6be2ad86f03e90015bce6f55f5221a31dfa7d27119a253
+
+</details>
 
 </details>
 
