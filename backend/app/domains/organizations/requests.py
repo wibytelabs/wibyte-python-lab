@@ -1,5 +1,6 @@
 """Fixed executive request fields; no identity, capability or designation input."""
 from typing import Literal
+from uuid import UUID
 from pydantic import BaseModel,ConfigDict,Field,field_validator,model_validator
 
 
@@ -72,3 +73,34 @@ class OrganizationCreate(BaseModel):
     @field_validator('reason')
     @classmethod
     def reason_required(cls,value):return ExecutiveChange.reason_required(value)
+
+
+class PrimaryTransferPreview(ExecutiveChange):
+    model_config=ConfigDict(extra='forbid',frozen=True)
+    expected_version: int=Field(strict=True,ge=1,le=2147483647)
+    target_membership_id: UUID
+
+    @field_validator('target_membership_id')
+    @classmethod
+    def target_required(cls,value):
+        if value.int==0:raise ValueError('Select a membership.')
+        return value
+
+    @field_validator('reason')
+    @classmethod
+    def plain_reason(cls,value):
+        if any(ord(char)<32 or ord(char)==127 for char in value):raise ValueError('Invalid reason.')
+        return value
+
+
+class PrimaryTransferConfirmation(BaseModel):
+    model_config=ConfigDict(extra='forbid',frozen=True)
+    expected_version: int=Field(strict=True,ge=1,le=2147483647)
+    transfer_id: UUID
+    confirmation: str=Field(strict=True,min_length=1,max_length=256,pattern=r'^[!-~]+$',repr=False)
+
+    @field_validator('transfer_id')
+    @classmethod
+    def transfer_required(cls,value):
+        if value.int==0:raise ValueError('Select a transfer preview.')
+        return value

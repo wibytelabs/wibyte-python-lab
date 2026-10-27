@@ -13,10 +13,11 @@ from backend.app.domains.authorization.context import RequestContext, RequestSco
 from backend.app.domains.authorization.policy import require_tenant_admin
 from backend.app.domains.organizations.directory import require_organization_directory
 from backend.app.domains.organizations.metadata import change_organization
-from backend.app.domains.organizations.requests import OrganizationPatch, OrganizationStatus, OrganizationCreate
+from backend.app.domains.organizations.requests import OrganizationPatch, OrganizationStatus, OrganizationCreate, PrimaryTransferPreview, PrimaryTransferConfirmation
 from backend.app.domains.organizations.provisioning import prepare_organization, create_organization, find_organization_creation
 from backend.app.domains.jobs.payloads import PayloadKeyUnavailable, InvalidPayload
-from backend.app.domains.errors import AuthorizationDenied
+from backend.app.domains.errors import AuthorizationDenied, TenantConflict
+from backend.app.domains.organizations.transfers import preview_transfer, confirm_transfer
 from backend.app.domains.identity.types import VerifiedIdentity
 from backend.app.domains.identity.verification import InvalidIdentity
 
@@ -190,7 +191,10 @@ def tenant_job(org_id: UUID,job_id: UUID,request: Request,actor: Actor):
         row=session.execute(text("""SELECT id AS job_id,kind,state,delivery_status,attempts,max_attempts,
             last_error_code,created_at,updated_at FROM wpl.jobs WHERE org_id=:org AND id=:job"""),
             {'org':org_id,'job':job_id}).mappings().one_or_none()
-        if row is None:raise APIError(404,'not_found','Requested resource is unavailable.')
+        if row is None:
+            result=session.execute(text('SELECT wpl.primary_transfer_job(:org,:job)'),{'org':org_id,'job':job_id}).scalar_one()
+            if result is None:raise APIError(404,'not_found','Requested resource is unavailable.')
+            return result
         return dict(row)
 
 
@@ -240,4 +244,65 @@ def initial_primary_job(org_id: UUID,job_id: UUID,request: Request,actor: Actor)
         result=session.execute(text('SELECT wpl.platform_primary_job(:org,:job)'),{'org':org_id,'job':job_id}).scalar_one()
         if result is None:raise APIError(404,'not_found','Requested resource is unavailable.')
         if result.get('error')=='forbidden':raise AuthorizationDenied()
+        return result
+
+
+IfMatch=Annotated[str | None,Header(alias='If-Match',max_length=32)]
+
+
+def transfer_preconditions(actor,version,if_match):
+    # Auth time comes only from production identity verification, never headers.
+    authenticated=actor.authenticated_at
+    if authenticated is None or not -30<=(datetime.now(timezone.utc)-authenticated).total_seconds()<=300:
+        raise TenantConflict('recent_auth_required','Authenticate again before changing the primary designation.')
+    if if_match is not None and if_match!='"'+str(version)+'"':
+        raise TenantConflict('version_conflict','The organization changed; reload before retrying.')
+
+
+def transfer_preview_response(org_id,body,request,actor,scope,if_match):
+    transfer_preconditions(actor,body.expected_version,if_match)
+    context=RequestContext(actor,scope,org_id)
+    with request.app.state.foundation_database.request_transaction(context) as session:
+        result=preview_transfer(session,context,body.target_membership_id,body.expected_version,body.reason)
+    return {'transfer_id':str(result.transfer_id),'org_id':str(result.org_id),
+        'from_membership_id':str(result.from_membership_id),'to_membership_id':str(result.to_membership_id),
+        'expected_version':result.expected_version,'expires_at':result.expires_at.isoformat(),
+        'confirmation':result.confirmation,'former_primary_retains_admin':True,
+        'operation':'recovery' if scope is RequestScope.PLATFORM else 'transfer'}
+
+
+def transfer_confirmation_response(org_id,body,request,response,actor,scope,if_match):
+    transfer_preconditions(actor,body.expected_version,if_match)
+    context=RequestContext(actor,scope,org_id)
+    with request.app.state.foundation_database.request_transaction(context) as session:
+        result=confirm_transfer(session,context,body.transfer_id,body.expected_version,body.confirmation)
+    response.headers['Idempotency-Replayed']='true' if result.replayed else 'false'
+    return result.public
+
+
+@router.post('/orgs/{org_id}/primary-admin-transfers/preview')
+def primary_transfer_preview(org_id: UUID,body: PrimaryTransferPreview,request: Request,actor: Actor,if_match: IfMatch=None):
+    return transfer_preview_response(org_id,body,request,actor,RequestScope.TENANT,if_match)
+
+
+@router.post('/orgs/{org_id}/primary-admin-transfers')
+def primary_transfer_confirmation(org_id: UUID,body: PrimaryTransferConfirmation,request: Request,response: Response,actor: Actor,if_match: IfMatch=None):
+    return transfer_confirmation_response(org_id,body,request,response,actor,RequestScope.TENANT,if_match)
+
+
+@router.post('/platform/organizations/{org_id}/primary-admin-recovery/preview')
+def primary_recovery_preview(org_id: UUID,body: PrimaryTransferPreview,request: Request,actor: Actor,if_match: IfMatch=None):
+    return transfer_preview_response(org_id,body,request,actor,RequestScope.PLATFORM,if_match)
+
+
+@router.post('/platform/organizations/{org_id}/primary-admin-recovery')
+def primary_recovery_confirmation(org_id: UUID,body: PrimaryTransferConfirmation,request: Request,response: Response,actor: Actor,if_match: IfMatch=None):
+    return transfer_confirmation_response(org_id,body,request,response,actor,RequestScope.PLATFORM,if_match)
+
+
+@router.get('/platform/organizations/{org_id}/primary-admin-recovery/jobs/{job_id}')
+def primary_recovery_job(org_id: UUID,job_id: UUID,request: Request,actor: Actor):
+    with request.app.state.foundation_database.request_transaction(RequestContext(actor,RequestScope.PLATFORM,org_id)) as session:
+        result=session.execute(text('SELECT wpl.primary_transfer_job(:org,:job)'),{'org':org_id,'job':job_id}).scalar_one()
+        if result is None:raise APIError(404,'not_found','Requested resource is unavailable.')
         return result

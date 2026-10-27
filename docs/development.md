@@ -880,3 +880,127 @@ invariants, exercise stored actor/expiry/target denials, mixed-kind competing cl
 stale generation/crash reconciliation and raw helper privilege denial. The full
 ordinary tenant worker test matrix remains mandatory. No real mail adapter/key
 provider/daemon activation is supplied; protected transfer/recovery remains pending.
+
+### P02.5 protected transfer preview boundary
+
+Revision p0216_transfer_preview introduces an app-only preview entry point and
+private authority helper. Tenant scope requires the current globally active,
+active-member designated Primary Admin of an active organization. Platform scope
+requires the separate current recovery capability, explicit target org and
+recovery_required state; directory orgs capability alone cannot preview recovery.
+The helper has no public/app/worker EXECUTE grant. No direct transfer table read,
+insert or designation update permission is added.
+
+The org parent lock serializes previews with membership/role/status writes. The
+entry point rechecks authority after locking, requires expected organization
+version and another active same-org admin, and stores actor/from/to/scope/reason,
+a SHA256 confirmation digest and a five-minute deadline. It leaves designation,
+roles, organization state and epochs unchanged. Only one live preview is allowed:
+the same actor can replace its preview; a different actor conflicts until expiry.
+Preview and redacted audit share a transaction/savepoint. The Python service
+requires actual wpl_app context, generates a random confirmation returned once
+and excludes it from repr; it never returns the stored digest or member email.
+
+This slice supplies no HTTP route, completion mutation, notification job or
+recovery activation. Those follow separately with recent-auth confirmation,
+version/target/authority recheck and atomic notification intent. Existing ordinary
+primary and instructor guards remain unchanged. Mandatory actual Postgres tests
+cover primary/recovery authority, target/version/context denials, preview expiry
+and competing actors, rollback/audit failure and raw runtime privilege boundaries.
+
+### P02.5 confirmed primary change and recovery transaction
+
+Revision p0217_transfer_completion exposes one narrow app-only confirmation root.
+The service requires an exact actual wpl_app actor/scope/org/auth-time context.
+The root independently checks a server-bound authentication time within five
+minutes (at most 30 seconds future skew), including after locks. The preview's
+actor, org, authorization scope, expected version and SHA256 confirmation digest
+must match. A live unexpired preview must still refer to the current designation,
+organization version and another active same-org admin. Tenant execution requires
+the current Primary Admin; recovery requires the separate current unexpired
+recovery grant and recovery_required state. Reasons are retained from the preview.
+
+Identity rows are share-locked in UUID order before the org parent lock, matching
+the user-before-org order of global security suspension. Recovery also locks the
+current capability row. The transaction then rechecks authority/target/version,
+changes the single designation and, for explicit recovery, restores active org
+state without changing the old identity's global security state. Existing triggers
+advance version/epoch once and retain the old active admin membership/role.
+No approval, account remap or platform grant is performed.
+
+Designation, completed preview/public receipt, redacted audit, a queued
+notify_primary_transfer job and pending primary_transfer_notification_requested
+outbox are atomic. Intent uses private stored from/to IDs and a canonical digest;
+no email address, credential or confirmation value is put in the job/outbox/audit.
+The notification job has no secret payload and remains pending_integration.
+Existing invitation workers deliberately ignore this distinct kind. A notification
+worker/provider integration and public HTTP/status routes follow separately; this
+slice claims durable notification intent, not delivery. No real provider is called.
+
+The preview UUID is the one-use operation identity. Repeated matching confirmation,
+including simultaneous requests or a new pool after commit, returns the persisted
+public receipt without a second change/job/outbox. Replay still requires recent
+authentication, matching actor/scope/digest/version and current tenant-admin or
+explicit recovery authority. Thus the former primary can replay while still an
+active admin, but removal/global block/grant revocation denies cached receipts.
+The receipt describes the committed operation; current job state is separate.
+
+Actual Postgres tests cover normal/recovery change, old admin retention and global
+block preservation, wrong/expired confirmation and stale versions/targets, current
+recovery grant expiry/revocation, concurrent confirmations, actual transfer/removal
+and target-global-suspension lock races, outer rollback/new-pool retry and real
+audit/outbox constraint failures caught inside savepoints. They also retain direct
+column/table/helper/worker denial. No broad table privilege or root bypass is added.
+
+### P02.5 signed transfer and explicit recovery HTTP
+
+The shared internal /v1 router adds these public-proxy /api/v1 operations:
+
+- POST /orgs/{org_id}/primary-admin-transfers/preview: current Primary Admin.
+- POST /orgs/{org_id}/primary-admin-transfers: confirm that actor's preview.
+- POST /platform/organizations/{org_id}/primary-admin-recovery/preview: explicitly
+  granted recovery executive targeting an org in recovery_required state.
+- POST /platform/organizations/{org_id}/primary-admin-recovery: confirm recovery.
+- GET /platform/organizations/{org_id}/primary-admin-recovery/jobs/{job_id}: current
+  recovery authority, redacted status of the exact completed transfer's notification.
+
+The route selects tenant/platform context; no body/header scope/actor/capability
+selector exists. An orgs directory grant does not permit recovery or tenant entry.
+Both preview and confirmation require production-verified authentication within
+five minutes, with at most 30 seconds future skew. Missing/old timing gets fixed
+recent_auth_required conflict; invalid signed timing is rejected by the verifier.
+No provider account login timestamp or caller header substitutes for this proof.
+
+Preview requires target_membership_id, strict positive bounded expected_version
+and a bounded nonempty reason. It returns from/to IDs, five-minute expiry, a one-use
+confirmation and the explicit former-primary-retains-admin consequence. Confirmation
+accepts only transfer_id, the original expected_version and confirmation. It uses
+the preview UUID as stable operation identity: committed retries return the same
+public receipt with Idempotency-Replayed true, after current authority and recent
+authentication are rechecked. Confirmation values/hashes are excluded from errors,
+audit, job status and completion receipts. Body extra fields cannot substitute IDs.
+
+The required expected_version body field follows the implemented foundation write
+contract. A supplied strong If-Match header must equal the quoted body version;
+weak/mismatching values fail version_conflict. This supports the planned If-Match
+contract without silently ignoring it, while retaining the existing explicit body
+version convention. Responses are emitted after transaction commit. Unknown or
+expired preview/confirmation and stale org version produce fixed conflicts.
+
+Revision p0218_transfer_job_read adds one app-only safe read root, no table grants.
+GET /orgs/{org_id}/jobs/{job_id} retains ordinary invitation reads and can now use
+that root for current active admins' transfer notification status. It verifies the
+completed private transfer receipt, actor/org/kind/dedup/intent digest and matching
+outbox before returning only the existing nine job status fields. Platform recovery
+status uses the same root with explicit current recovery scope. Cross-org, absent,
+unauthorized or tampered intent yields not_found. The ordinary executive initial-
+invitation status route stays specific to that job kind and orgs capability.
+
+Queued notify_primary_transfer jobs remain pending_integration; this slice adds
+no mail adapter or worker claim path for them. Invitation workers remain unchanged.
+Signed HTTP tests use production ES256 verification with synthetic JWKS transport
+and actual runtime DB roles. They prove tenant transfer/recovery, current grants,
+spoofed header/claim/body denials, recent authentication, bounded inputs/If-Match,
+concurrent receipt replay, stale/blocked actors/targets, redacted/tampered status,
+actual audit failure rollback/error sanitization/pool reuse and feature-off routes.
+Domain tests separately exercise two-connection locks and suspension/removal races.

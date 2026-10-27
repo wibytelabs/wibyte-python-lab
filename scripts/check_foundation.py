@@ -28,8 +28,8 @@ def checked(label, command, env, *, timeout=30, capture=False, check=True, input
     return result
 
 FOUNDATION_TESTS = (
-    'test_context.py', 'test_database.py', 'test_enqueue.py', 'test_executive_metadata.py', 'test_guards.py', 'test_http.py', 'test_http_platform.py', 'test_http_provisioning.py', 'test_idempotency.py', 'test_identity.py',
-    'test_mutation_rls.py', 'test_payloads.py', 'test_primary_worker.py', 'test_provisioning.py', 'test_read_rls.py', 'test_schema.py', 'test_services.py', 'test_worker_execution.py', 'test_worker_leases.py', 'test_worker_transitions.py',
+    'test_context.py', 'test_database.py', 'test_enqueue.py', 'test_executive_metadata.py', 'test_guards.py', 'test_http.py', 'test_http_platform.py', 'test_http_provisioning.py', 'test_http_transfers.py', 'test_idempotency.py', 'test_identity.py',
+    'test_mutation_rls.py', 'test_payloads.py', 'test_primary_worker.py', 'test_provisioning.py', 'test_read_rls.py', 'test_schema.py', 'test_services.py', 'test_transfer_completion.py', 'test_transfer_preview.py', 'test_worker_execution.py', 'test_worker_leases.py', 'test_worker_transitions.py',
 )
 
 
