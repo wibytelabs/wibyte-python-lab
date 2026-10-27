@@ -769,3 +769,114 @@ rejection, cached authority denial, pending-primary/recovery safeguards, two act
 app connection race winners/conflicts, direct status/context bypass denial and a
 real CHECK failure proving audit/business rollback even when the caller catches it.
 No private configuration or running application is activated.
+
+### P02.5 atomic pending organization provisioning foundation
+
+organizations.provisioning.prepare_organization validates a fixed OrganizationCreate
+request and generates fresh org/member/invitation/job/payload UUIDs and a random
+activation capability. An explicit PayloadCipher resolves its key and encrypts the
+bounded delivery payload outside the DB transaction. Raw capability/email inputs
+are omitted from prepared-object representations and public receipts. No legacy
+signing key, automatic key fallback or real secret provider is supplied.
+
+create_organization requires the actual bound application actor in platform scope
+with current orgs capability and no tenant target. Revision p0213_provisioning
+exposes one narrow owner-definer function with safe search_path and independent
+scope/capability/input validation; no direct table/worker/bootstrap grants. It
+computes a canonical request digest in PostgreSQL, serializes the complete
+actor/platform/create-operation/key namespace, rechecks current permission, and
+uses the existing composite idempotency primary key as the final guard. Same
+actor/key/body replays one saved public receipt; different body conflicts, while
+another executive has a separate key namespace. Cached receipts still require
+current permission. Generated crypto IDs/ciphertexts are excluded from the request
+digest so preparation on a retry does not repeat creation.
+
+The transaction inserts a pending organization, one designated invite_pending
+membership with NULL user_id, admin role, pending invitation/digest, encrypted
+payload, queued deliver_primary_invitation job, pending outbox, redacted creation
+and enqueue audits and fixed-shape idempotency receipt. It never matches a user by
+email, approves an identity, grants platform authority or activates the primary.
+All records share a savepoint and outer caller-owned commit; actual audit CHECK
+failure and outer rollback remove every partial record. No-op replay does not
+persist its freshly prepared payload or alternate IDs. The receipt describes the
+original persisted pending/queued result; current detail must be fetched separately.
+
+This is the database/service foundation, not the POST create HTTP endpoint yet.
+The initial-primary job uses a separate kind and remains queued/pending_integration;
+current tenant invitation workers intentionally do not claim this pending-org,
+executive-actor kind. Its explicit worker authorization, HTTP composition/key-provider
+injection and platform job-status path follow separately. No delivery/activation
+success or real provider integration is claimed by this slice.
+
+Actual wpl_app tests prove pending designation/circular constraints, no email-only
+identity remap, encrypted persisted payload/redacted receipt/audit, same-key concurrent
+one-org/invite/job/outbox receipt, changed-body conflict, new-pool replay, separate
+executive namespaces, current capability revocation, outer/savepoint failure rollback,
+invalid input/key/provider/context rejection and direct-table/receipt privilege denial.
+No generated raw token is returned in test diagnostics or stored as plaintext.
+
+### P02.5 initial organization create HTTP and platform job status
+
+POST /v1/platform/organizations validates the fixed OrganizationCreate body and
+requires an ASCII bounded Idempotency-Key header. It uses the actual verifier and
+explicit platform context, checks current capability and an actor-scoped saved
+receipt before preparing new crypto. New creation returns 201 only after the full
+organization/invite/payload/job/outbox/audit/receipt transaction commits. A repeated
+body/key returns the identical public body/status with Idempotency-Replayed: true;
+changed input returns 409. Current permission still applies. Saved receipt replay
+works without key resolution, even during key-provider outage or after restarting
+without crypto configuration. The original receipt reports its persisted creation
+result; use detail/job reads for subsequent current state.
+
+create_app accepts only an explicit optional PayloadCipher at the trusted server
+composition boundary. There is no key environment/file/signing-key fallback or
+automatic provider setup. Read/metadata routes still work when crypto is absent;
+new create returns a sanitized delivery_unavailable (503), never placeholder success.
+Pre-auth/read transaction closes before key resolution/encryption. A second current
+authority check inside creation prevents a key-time revocation from committing.
+No private configuration is changed and no real provider is contacted.
+
+Revision p0214_provisioning_reads gives wpl_app two narrow owner-definer read entry
+points for actor/platform/create receipt lookup and targeted initial-primary job
+metadata. It adds no direct private table or worker permissions. GET at
+/platform/organizations/{org_id}/jobs/{job_id} requires current orgs capability and
+explicit target scope, reads only that org's verified deliver_primary_invitation
+job, and excludes raw invitation/key/ciphertext/hash/lease data. Executives do not
+implicitly gain tenant membership or arbitrary tenant-job/roster access.
+
+HTTP tests use real synthetic ES256 tokens and actual runtime roles, explicit
+fixture-only keys/capabilities and a thread-local checkout guard during key I/O.
+They exercise 201/pending receipts, concurrent/replayed/changed-body requests,
+provider outage replay, key-time revocation, unauthorized/invalid/missing config,
+redacted targeted job scope, feature-off and unchanged tenant boundaries. The
+initial-primary worker kind remains queued/pending_integration until its explicit
+stored executive/pending-org authorization is wired separately; no activation,
+acceptance of an invitation or delivery success is implied by HTTP 201.
+
+### P02.5 initial-primary worker authorization
+
+Revision p0215_primary_worker extends the existing fenced claim/load/renew/target/
+finish entry points to the explicit deliver_primary_invitation kind. A private
+shared predicate validates stored creator UUID/current active global state, current
+unexpired orgs capability and the stored organization's pending state. Ordinary
+tenant invitations retain the same current active tenant-admin predicate. Caller
+worker GUCs cannot substitute a different executive or tenant actor. No new public
+function/table privilege is granted; the private helper remains non-executable by
+app/worker roles. Existing lease owner/generation/expiry/attempt bounds remain.
+
+Payload load returns the stored known kind for authenticated payload binding.
+Execution uses that purpose in the full intent check. Initial-primary target
+checks additionally require the current designated membership, NULL user binding,
+pending matching invitation and admin-only intended roles. Revoked/expired invites,
+non-designated targets, lost capability, global suspension or no-longer-pending
+organization cannot produce a new effect. The ordinary route still cannot approve,
+activate, accept invitations or assign platform authority. Initial delivery uses
+the explicit adapter timeout and the same stable operation dedup/reconciliation.
+Fake acceptance persists simulated while org/member/invitation stay pending.
+
+Actual-runtime tests connect the signed HTTP create flow to wpl_worker and the
+durable test-only fake adapter, inspect redacted platform status and pending identity
+invariants, exercise stored actor/expiry/target denials, mixed-kind competing claims,
+stale generation/crash reconciliation and raw helper privilege denial. The full
+ordinary tenant worker test matrix remains mandatory. No real mail adapter/key
+provider/daemon activation is supplied; protected transfer/recovery remains pending.

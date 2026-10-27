@@ -6,14 +6,17 @@ import json
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from sqlalchemy import text
 
 from backend.app.domains.authorization.context import RequestContext, RequestScope
 from backend.app.domains.authorization.policy import require_tenant_admin
 from backend.app.domains.organizations.directory import require_organization_directory
 from backend.app.domains.organizations.metadata import change_organization
-from backend.app.domains.organizations.requests import OrganizationPatch, OrganizationStatus
+from backend.app.domains.organizations.requests import OrganizationPatch, OrganizationStatus, OrganizationCreate
+from backend.app.domains.organizations.provisioning import prepare_organization, create_organization, find_organization_creation
+from backend.app.domains.jobs.payloads import PayloadKeyUnavailable, InvalidPayload
+from backend.app.domains.errors import AuthorizationDenied
 from backend.app.domains.identity.types import VerifiedIdentity
 from backend.app.domains.identity.verification import InvalidIdentity
 
@@ -206,4 +209,35 @@ def organization_status(org_id: UUID,body: OrganizationStatus,request: Request,a
         result=change_organization(session,actor,org_id,version=body.expected_version,reason=body.reason,
             operation='status',status=body.status)
         if result is None:raise APIError(404,'not_found','Requested resource is unavailable.')
+        return result
+
+
+@router.post('/platform/organizations',status_code=201)
+def provision_organization(request: Request,response: Response,actor: Actor,body: OrganizationCreate,
+        idempotency_key: Annotated[str,Header(alias='Idempotency-Key',min_length=1,max_length=128,pattern=r'^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$')]):
+    database=request.app.state.foundation_database
+    context=RequestContext(actor,RequestScope.PLATFORM)
+    # Authority and saved-result lookup precede key I/O; cache replay needs no key.
+    with database.request_transaction(context) as session:
+        outcome=find_organization_creation(session,context,idempotency_key,body)
+    if outcome is None:
+        cipher=request.app.state.foundation_payload_cipher
+        if cipher is None:raise APIError(503,'delivery_unavailable','Invitation preparation is temporarily unavailable.')
+        try:
+            prepared=prepare_organization(context,body,cipher)
+        except (PayloadKeyUnavailable,InvalidPayload):
+            raise APIError(503,'delivery_unavailable','Invitation preparation is temporarily unavailable.') from None
+        with database.request_transaction(context) as session:
+            outcome=create_organization(session,context,idempotency_key,prepared)
+    response.headers['Idempotency-Replayed']='true' if outcome.replayed else 'false'
+    return outcome.public()
+
+
+@router.get('/platform/organizations/{org_id}/jobs/{job_id}')
+def initial_primary_job(org_id: UUID,job_id: UUID,request: Request,actor: Actor):
+    with request.app.state.foundation_database.request_transaction(RequestContext(actor,RequestScope.PLATFORM,org_id)) as session:
+        require_organization_directory(session,actor,org_id)
+        result=session.execute(text('SELECT wpl.platform_primary_job(:org,:job)'),{'org':org_id,'job':job_id}).scalar_one()
+        if result is None:raise APIError(404,'not_found','Requested resource is unavailable.')
+        if result.get('error')=='forbidden':raise AuthorizationDenied()
         return result

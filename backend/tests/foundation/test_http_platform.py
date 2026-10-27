@@ -144,13 +144,13 @@ class PlatformHTTPTests(unittest.TestCase):
         self.assert_error(self.client.get(path,headers=headers),404,'not_found')
         self.assertEqual(self.database.engine.pool.checkedout(),0)
 
-    def test_directory_capability_never_enters_tenant_roster_or_jobs_and_reads_cannot_mutate(self):
+    def test_directory_capability_never_enters_tenant_roster_or_jobs_and_invalid_posts_cannot_mutate(self):
         identifier,payload=self.enqueue()
         self.assertEqual(self.get('/v1/platform/organizations',self.executive).status_code,200)
         self.assert_error(self.get(f"/v1/orgs/{self.a['org']}/members",self.executive),404,'not_found')
         for path in ('/v1/platform/organizations',f"/v1/orgs/{self.a['org']}/jobs/{identifier}"):
             response=self.client.post(path,headers={'Authorization':'Bearer '+self.token(self.executive)},json={'role':'admin'})
-            self.assertEqual(response.status_code,405,response.text)
+            self.assertEqual(response.status_code,405 if '/jobs/' in path else 422,response.text)
         with connect() as owner:
             self.assertEqual(owner.execute('SELECT state,delivery_status FROM wpl.jobs WHERE id=%s',(identifier,)).fetchone(),('queued','pending_integration'))
             self.assertEqual(owner.execute('SELECT count(*) FROM wpl.organization_memberships WHERE user_id=%s',(self.executive,)).fetchone()[0],0)

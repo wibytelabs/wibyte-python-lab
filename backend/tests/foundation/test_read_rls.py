@@ -219,7 +219,7 @@ class ReadRLSTests(unittest.TestCase):
             self.assertEqual(result.exception.orig.sqlstate,'42501')
 
     def test_policy_helpers_have_minimal_execute_safe_search_path_and_explicit_worker_grants(self):
-        entries={'read_org','read_member','read_user','read_cohort','read_assignment','read_platform_role','identity_insert_allowed','write_tenant','write_tenant_audit','idempotency_access','delivery_target_allowed','payload_enqueue_allowed','job_enqueue_allowed','job_read_allowed','outbox_enqueue_allowed','outbox_read_allowed','job_audit_allowed','change_organization'}
+        entries={'read_org','read_member','read_user','read_cohort','read_assignment','read_platform_role','identity_insert_allowed','write_tenant','write_tenant_audit','idempotency_access','delivery_target_allowed','payload_enqueue_allowed','job_enqueue_allowed','job_read_allowed','outbox_enqueue_allowed','outbox_read_allowed','job_audit_allowed','change_organization','provision_organization','organization_creation_receipt','platform_primary_job'}
         worker_entries={'claim_deliveries','renew_delivery','delivery_payload','authorize_delivery_target','finish_delivery','acknowledge_delivery'}
         with connect() as owner:
             rows=owner.execute("""SELECT p.proname,p.prosecdef,p.proconfig,

@@ -32,13 +32,14 @@ def load_delivery(database,worker,lease):
     with database.transaction() as session:
         row=session.execute(text('SELECT * FROM wpl.delivery_payload(:job,:worker,:generation)'),values).mappings().one_or_none()
         material=None if row is None else DeliveryMaterial(
-            PayloadBinding(PayloadScope.TENANT,row['org_id'],row['actor_id'],lease.job_id,row['payload_id'],KIND),
+            PayloadBinding(PayloadScope.TENANT,row['org_id'],row['actor_id'],lease.job_id,row['payload_id'],row['kind']),
             EncryptedPayload(row['key_reference'],bytes(row['ciphertext'])))
     return material
 
 
-def authorize_delivery(database,worker,lease,payload):
+def authorize_delivery(database,worker,lease,payload,*,purpose=KIND):
     values=_validate(worker,lease)
+    if purpose not in (KIND,'deliver_primary_invitation'):raise ValueError('Invalid delivery purpose.')
     # Only the fixed decrypted invitation shape crosses this boundary. Never echo it.
     if not isinstance(payload,dict) or set(payload)!={'invitation_id','email','activation_token'}:
         raise ValueError('Invalid invitation delivery payload.')
@@ -53,7 +54,7 @@ def authorize_delivery(database,worker,lease,payload):
         if identifier.int==0:raise ValueError
     except ValueError:raise ValueError('Invalid invitation delivery payload.') from None
     intent=hashlib.sha256(encode_object({'actor_id':str(lease.actor_id),'org_id':str(lease.org_id),
-        'kind':KIND,'payload':{'invitation_id':str(identifier),'email':email,'activation_token':token}})).hexdigest()
+        'kind':purpose,'payload':{'invitation_id':str(identifier),'email':email,'activation_token':token}})).hexdigest()
     values.update(invitation=identifier,email=email,digest=hashlib.sha256(token.encode('ascii')).digest(),intent=intent)
     with database.transaction() as session:
         allowed=session.execute(text('SELECT wpl.authorize_delivery_target(:job,:worker,:generation,:invitation,:email,:digest,:intent)'),values).scalar_one()

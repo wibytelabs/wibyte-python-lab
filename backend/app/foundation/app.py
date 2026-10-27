@@ -14,14 +14,17 @@ from backend.app.domains.identity.verification import build_verifier,InvalidIden
 from backend.app.foundation.api import router,APIError
 from backend.app.foundation.settings import FoundationSettings,FoundationConfigurationError
 from backend.app.foundation.db import FoundationDatabase
+from backend.app.domains.jobs.payloads import PayloadCipher
 
 
-def create_app(settings: FoundationSettings,*,identity_settings: IdentitySettings | None=None,identity_transport=None) -> FastAPI:
+def create_app(settings: FoundationSettings,*,identity_settings: IdentitySettings | None=None,identity_transport=None,payload_cipher: PayloadCipher | None=None) -> FastAPI:
     """Explicit trusted settings/resources; no dotenv or runtime bypass flags.
 
     identity_transport is an injected HTTP transport for isolated fixtures. Tokens
     still pass through the production verifier; request data cannot select it.
     """
+    if payload_cipher is not None and not isinstance(payload_cipher,PayloadCipher):
+        raise FoundationConfigurationError('An explicit payload cipher is required.')
     if settings.enabled and not isinstance(identity_settings,IdentitySettings):
         raise FoundationConfigurationError('Explicit foundation identity settings are required.')
     verifier=build_verifier(identity_settings,transport=identity_transport) if settings.enabled else None
@@ -45,6 +48,7 @@ def create_app(settings: FoundationSettings,*,identity_settings: IdentitySetting
     app=FastAPI(title='WPL tenant foundation',lifespan=lifespan)
     app.state.foundation_database=database
     app.state.foundation_verifier=verifier
+    app.state.foundation_payload_cipher=payload_cipher if settings.enabled else None
     if settings.enabled: app.include_router(router)
 
     def error(request,status,code,message,**extra):

@@ -62,7 +62,7 @@ def process_delivery(database,worker_id: UUID,lease: DeliveryLease,cipher: Paylo
     if not renew_delivery(database,worker_id,lease,lease_seconds=60):
         return finish('cancel','target_unavailable')
     try:
-        allowed=authorize_delivery(database,worker_id,lease,payload)
+        allowed=authorize_delivery(database,worker_id,lease,payload,purpose=material.binding.purpose)
     except ValueError:
         allowed=None
     if allowed is None:return finish('cancel','payload_invalid')
