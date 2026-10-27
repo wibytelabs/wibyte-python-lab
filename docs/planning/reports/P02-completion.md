@@ -1,3 +1,266 @@
+# P02 completion evidence — protected snapshot and disposable import rehearsal
+
+Status: IN PROGRESS, approximately 86%. P02.7 now has explicit protected-snapshot
+dry run, historical archival compatibility and confirmed owned-fixture personal
+import with encrypted credentials and reconciliation. P02.8 safe general-file
+primitives and final architect review remain required. Do not advance to P03.
+
+## Source identity and bounded change
+
+- Accepted P01: 0fc1ca53932b94fdcb91ddc20313cbb85ac7edbd.
+- Previous shared-router/UI implementation: 416d2e482d1ce6c5cc0effaf4f8efc4fe610e742.
+- Parent/report: b3b71f44d8034448170450cf6dbdcd4477dbdf4e.
+- Migration rehearsal implementation: 2f3e9e58151bc27dcd46e9067fbf35fd0be961a7; branch codex/p02-tenant-foundation.
+- Exactly 15 intended implementation paths are listed with hashes below. A separate
+  report-only commit preserves prior evidence; unrelated documents/work remain unstaged.
+
+## Implemented behavior and actual proof
+
+The offline snapshot inspector has no default source, target connection, dotenv,
+legacy ORM/config/main import, provider request or workspace-file export. It requires
+an explicit absolute *.snapshot.sqlite3 private regular copy, matching SHA256,
+current ownership, no group/other access, one link, no final symlink/sidecar and a
+64 MiB bound. It reads with no-follow descriptors, checks file stability and exact
+bytes, then deserializes into an in-memory query-only SQLite connection with trusted
+schema disabled and bounded SQL work, rows and text. Nothing opens the source for
+writing. Public output contains counts/checksums/policy, never profile/token/repo/
+container values. Private row state has redacted repr and immutable scalar mappings.
+
+The inspector validates integrity, known tables/columns, current or explicitly
+supported historical revision, nonzero canonical UUIDs, timestamps, required fields,
+FKs/owner relationships, numeric GitHub identifiers and repository owner/name/fullname
+consistency. Orphans, cross-owner lab/repository bindings, unknown executable schema,
+duplicated repository/provider identity or unsupported partial revisions fail with
+fixed redacted codes. Stable source-kind/UUID target maps retain original IDs and
+personal owner/repository references. Profile emails are retained only as data; even
+duplicate emails never merge identities or infer an institution.
+
+Generated fixtures run the unchanged legacy revision bodies through Alembic
+Operations, bypassing legacy dotenv/config. The empty chain reaches existing head
+7d8e63fb45c3 before synthetic population. A separate actual populated 553a7ddf4183
+fixture proves that unchanged 3e58a6eb699a NOT NULL refresh-token/expiry additions
+fail without defaults. The historical source is neither upgraded nor stamped.
+Default inspection rejects it. Only explicit archive_for_reauthorization permits
+that exact older schema to be read directly, retaining its original revision and
+absent profile/refresh/expiry fields. Unsupported/partial schemas still fail. No
+missing token or usable expiry is invented, and old credentials cannot become active.
+This avoids modifying historical migrations or pretending a populated upgrade passed.
+
+Revision p0219 introduces private RLS-enabled legacy_import_runs and
+legacy_import_artifacts, without app/worker grants. The immutable journal/archive
+holds source/revision/checksum/intent, stable target IDs, original owners and repo
+references, optional explicit existing auth UUID references, private metadata and
+credential envelopes. Same-namespace owner/repository FKs retain referential identity.
+Only personal scope exists; no organization assignment or runtime activation is
+available. Existing migration_mappings records imported references/checksums.
+
+This is a bounded P02 archival bridge because P03's replacement personal runtime
+and repository/storage model is not implemented here. It proves fixture import,
+counts and mappings without switching the working lab or fabricating new institution
+rows. Archived container references are metadata, never resumed or executed. No
+workspace code/file contents are read or exported. The architect should review this
+explicit scope choice before a later real migration or P03 consumption; this is not
+an import into an already activated replacement lab domain.
+
+Import requires explicit confirmation flag and matching source checksum, target URL,
+fixture ownership nonce, source namespace, reason, private 32-byte key file and key
+reference. Optional private JSON maps canonical source student UUIDs to distinct
+existing auth UUIDs. Unknown source/target IDs or many-to-one mappings fail; missing
+bindings remain unresolved personal archive owners. Binding neither creates nor
+approves users nor grants membership/roles. Actual pending-state and no-membership
+assertions pass after an explicit binding. No email-only auth remap is present.
+
+The tool accepts only fixture-db / wpl_fixture / wpl_migrator. It verifies actual
+connected role/database, non-super/non-BYPASSRLS schema ownership and the database
+comment matching the explicit run nonce. The fixture runner sets that comment and
+passes only its synthetic ownership nonce. Production/remote targets and env-default
+URLs are unsupported. This marker is an accidental-target safeguard in addition to
+the constrained fixture endpoint, not a general authorization boundary against a
+schema/database owner deliberately constructing another target.
+
+Credential material is encrypted by the existing AES-256-GCM component before a
+target connection or transaction. AAD binds the personal archive owner, namespace
+operation, target artifact, purpose and recorded key reference. Tokens and expiry
+values are excluded from metadata/public output. All imported credential records,
+including current-head ones, remain reauthorization_required. Historical missing
+refresh/expiry fields remain absent inside the envelope. Explicit key and mapping
+files require private regular owner-only/no-follow/one-link/bounded stable reads;
+no missing/wrong-key fallback or provider call exists. Replaying preparation can
+resolve/encrypt again, so the explicit archive key remains a prerequisite; no claim
+of key-outage import replay is made.
+
+Namespace advisory locking serializes competing imports. An identical committed
+source/binding/reason request replays after a new connection/pool and reconciles
+against the original archive/ciphertext, despite a fresh preparation nonce. Changed
+source, binding or reason conflicts. Source UUIDs, target IDs, owner/repo references,
+metadata/source checksums, mapping states/counts and stored archive digest must match
+before success. Corruption is rejected, not silently repaired. Run, artifacts and
+mappings share one transaction/savepoint, including caught real mapping CHECK failure
+and outer rollback. CLI prints success only after its outer connection context commits.
+App and worker cannot read the archive; actual immutable-row and secret-metadata
+CHECK denials pass. No normal runtime authorization uses the archive.
+
+Thirty-one new mandatory cases cover 12 snapshot, 6 historical and 13 actual
+Postgres import cases. Proof includes source bytes/mtime and disposable target-count
+preservation, real historical failure/explicit compatibility, unsafe input rejection,
+ambiguity/orphans, stable maps, encrypted round trip, explicit identity binding,
+new-pool/concurrent idempotency, real SQL/outer rollback, corruption rejection,
+role/marker/confirmation denial and actual CLI dry-run/import/replay from /tmp.
+Earlier mandatory factory/import, legacy app, RLS, worker and real frontend contracts
+remain unchanged and pass. No new dependency or runtime image was needed.
+
+## Full execution evidence
+
+User-run command from /tmp after exact candidate-source verification:
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 \
+  /home/wibyte/wibyte-python-lab/scripts/check_local.py
+```
+
+Raw full-gate log: /home/wibyte/wibyte-python-lab/work/p02-full-evidence-iGAM92xY/P02.7-migration-full-checks.log
+
+Raw log SHA256: 3721e2a8541e79483ca565060b62de03da6dfed53048ab3211de94f5bf56eaea
+
+| Mandatory group | Actual result |
+| --- | --- |
+| Runner failure/isolation contracts | 23 passed in 0.538s |
+| Setup regressions | 16 passed in 0.248s |
+| Legacy backend/idle regressions | 12 passed in 22.624s |
+| Frontend strict contracts | 96 passed across 8 declared modules; no fail/cancel/skip/TODO |
+| Disposable Postgres foundation | 251 passed across 27 declared modules in 91.195s; no skips |
+| Total registered cases | 398 passed; focused runs below are not added again |
+| Recreated-target migration/runtime role smoke | Passed |
+| Locked frontend install/build/lint | Passed; 0 lint errors, 2 existing warnings |
+
+Build remains 101 modules: CSS 27.50 kB / 6.24 kB gzip; JS 842.81 kB / 225.81 kB
+gzip, with Vite's >500 kB warning. Existing App.tsx:1161/1167 loadGitStatus dependency
+warnings and Starlette/httpx TestClient deprecation remain. No suppression, dependency
+upgrade or frontend source change was made in this checkpoint.
+
+## Runtime, isolation and cleanup
+
+PostgreSQL 17.11 image remains
+postgres@sha256:639ab7ceb90e13123085b741fb31ef493fba25463002f6da665352e7b534b652.
+Actual fixture wpl_app / wpl_fixture, Psycopg 3.3.6 binary; worker role wpl_worker;
+private schema owner wpl_migrator, separate from non-owner runtime identities.
+The import tool's explicitly permitted migrator role is a rehearsal-tool boundary,
+not owner-runtime RLS proof. App/worker denial is tested under their actual roles.
+Check image: sha256:bfc852f33cf0fbc9ff7a61897d599682ac71bc4a2a8e15ba1bc8d2268b896d2e.
+Node image: sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c.
+
+Final owned database container:
+2523e579a79e7fef98056a0c4a550656157804a13d2e8d74c0d0ee41a51ac945.
+Final owned internal network:
+4a61c1b34be2528d2a57ab32c50c7cb15b61614787ef0a32daa6cd7091ee9f37.
+Both were inspected and removed by exact owned ID; tmpfs data, including imported
+archives, was discarded. Generated SQLite/key/mapping fixtures lived only in owned
+temporary directories. Isolation verification retained internal network/no published
+ports/tmpfs/no host socket/data mount, read-only allowlisted source and synthetic
+settings. Legacy tests retain network-none. CLI target credentials are synthetic,
+confined to the disposable fixture and never included in report output.
+
+No live SQLite backup/export/read/import, private env, student files, configured
+provider account, real token, original labs.wibyte.in, deployment flag, service restart,
+application/student image rebuild or global prune was targeted. Source/domain imports
+retain socket-blocked no-legacy-config proof. Disposable fixture teardown/downgrade
+is not a rollback plan for real academic data.
+
+## Focused execution provenance (not additional full-gate cases)
+
+- Protected snapshot dry run: 232 unit/foundation cases; /home/wibyte/wibyte-python-lab/work/p02-snapshot-evidence-RnRsMeqS/snapshot-checks.log; raw SHA256 1d563700e43adea1c522621e701e22db7bafbad663ddd4766cd88ed7bbf7b27d.
+- Explicit historical archival compatibility: 238 unit/foundation cases; /home/wibyte/wibyte-python-lab/work/p02-historical-evidence-Z5wHXFEp/historical-checks.log; raw SHA256 31587fa85f5fae45bf2a0316f0e40040da2de59c2689c83a382e1fa29e095eb5.
+- Confirmed disposable personal import: 251 unit/foundation cases; /home/wibyte/wibyte-python-lab/work/p02-import-evidence-yUjrqT4k/import-checks.log; raw SHA256 bb227ccf773a7a9a0486d2c7938e3611c98e9210940b8de09593264f76317b89.
+
+## Current T01–T35 ledger (implemented surfaces only)
+
+| ID | Current result and limit |
+| --- | --- |
+| T01 | PASS this milestone: 398 tests, build/lint, existing warnings; phase incomplete. |
+| T02 | PASS socket-blocked foundation factory/domain/mount imports and no legacy DB side effects; actual legacy-main composition tested separately with synthetic adapters. |
+| T03 | PASS actual main default/explicit off and dotenv-only nonactivation, legacy SQLite/health/auth/CORS retained; explicit process-on shares the same router with bounded lifecycle cleanup. |
+| T04 | PASS fresh/repeat/concurrent/advisory migration, no import DDL, recreation. |
+| T05 | PASS actual non-owner app/worker attributes and DDL/escalation denials. |
+| T06 | PASS actual composite constraints under explicit disposable write fixture; not mutation RLS proof. |
+| T07 | PASS implemented identity/read, provisioning, protected transfer and separate executive recovery HTTP, pending own /me and sanitized stable errors. |
+| T08 | PASS actual asymmetric crypto and synthetic claim/key/metadata negative matrix. |
+| T09 | PASS synthetic bounded rotation/outage/cache paths; real project compatibility unverified. |
+| T10 | PASS implemented tenant/executive/provisioning plus primary/recovery runtime and signed HTTP scope matrix; no client actor/scope authority. |
+| T11 | PASS scoped pool commit/rollback/error/raised cancellation/PG timeout and HTTP reuse; no transport-disconnect claim. |
+| T12 | PASS implemented reads/current capability revocation plus executive org status/epoch/audit and tenant access suspension/resume; no immediate provider-logout claim. |
+| T13 | PASS atomic executive creation of one pending organization/designated invitation membership, encrypted intent, outbox, audit and receipt; no email binding or activation. |
+| T14 | PASS actual concurrent same-actor/key/body DB and signed HTTP creation, changed-body conflict, actor namespaces, new-pool replay and current authority recheck. |
+| T15 | PASS ordinary runtime services/direct SQL deny primary removal/demotion/suspension; protected transfer/recovery HTTP use separate confirmed paths and no direct designation grants. |
+| T16 | PASS actual app-role concurrent confirmations, version/target/confirmation/recent-auth checks, transfer/removal and target-global-suspension locks; signed HTTP replay matches one committed change. |
+| T17 | PASS active-primary/security-recovery invariants and explicit recovery HTTP restoring active org while preserving old global block and retained admin membership. |
+| T18 | PASS implemented ordinary paths: DB final-instructor races, runtime instructor replacement/history, direct SQL guard and actual assignment-aware read matrix. |
+| T19 | PASS explicit targeted recovery capability, current expiry/revocation checks, stored reason, recent confirmation and atomic recovery audit/notification intent; no self-bootstrap. |
+| T20 | PASS implemented invitation pipelines plus confirmed primary changes with atomic business/receipt/audit/job/outbox, caught failure rollback and new-pool replay; notification jobs remain pending integration. |
+| T21 | PASS actual restricted-worker competing claims, SKIP LOCKED, expiry/reclaim/late completion fencing and durable fake-adapter dedup/crash reconciliation; no universal external exactly-once claim. |
+| T22 | PASS bounded batch/lease/attempts, persisted exponential retry/cap/dead-letter, stored scope/actor/global/member/role/org checks and explicit fixture timestamps without long sleeps. |
+| T23 | PASS implemented invitation/confirmation redaction plus bound AES-GCM fixture-token archive, explicit keys before target transactions and app/worker archive denial; imported credentials remain disabled for reauthorization. |
+| T24 | PASS local real-client/controller and actual TSX/SSR identity, directory/provision/detail/job and protected transfer/recovery contracts; truthful queued/activation state. Browser/provider smoke NOT RUN. |
+| T25 | PASS local pending/non-executive/account-change/deep-link UI contracts plus existing actual signed HTTP tampering/RLS denials; no client grant. Browser interaction smoke NOT RUN. |
+| T26 | PASS production P01 client public /api/v1 joining and actual conditional /v1 child mount/internal routes; running nginx/browser smoke NOT RUN. |
+| T27 | PASS explicit protected-snapshot dry run preserves source bytes/mtime and actual target counts; unchanged populated historical migration failure proved and handled by explicit old-revision archival read with unknown expiry retained. |
+| T28 | PASS confirmed owned-disposable private personal archive import with reconciled counts/UUID/owner/repo maps, concurrent/new-connection idempotency and ambiguity/orphan/conflict/corruption/rollback denials; no activated P03 runtime import. |
+| T29 | PASS imported fixture tokens encrypted and disabled, personal scope retained, existing UUID bindings explicit/distinct with no user approval or invented memberships/institution/email remap. |
+| T30 | PENDING wired safe file primitives and negative cases. |
+| T31 | PENDING atomic replacement and ordinary file behavior proof. |
+| T32 | PENDING actual general-file-route primitive wiring; prior FormData/auth checks retained. |
+| T33 | PASS current CLI/domain/migration/test/helper snapshot and owned internal Postgres fixture, including explicit synthetic rehearsal ownership marker; extend for file primitives. |
+| T34 | PASS current local mandatory 96 frontend cases/8 modules and 251 foundation cases/27 modules with strict discovery/outcome policy; remote Actions UNVERIFIED. |
+| T35 | PASS implemented failure/timeout/cleanup contracts and actual cleanup; no app service mutation. |
+
+## Remaining work and review limits
+
+P02.8 still needs the common descriptor-relative safe file primitive wired into the
+existing general WorkspaceService/routes, atomic editor replacement, bounded traversal
+and delete, path/symlink/type/size/race/error tests and preserved upload/download/
+FormData/authentication behavior. Repeat the full gate after that work and complete
+T01–T35 evidence, then stop for architect review before P03.
+
+The reviewer should verify the private personal archival bridge scope, original vs
+historical schema handling, immutable reconciliation, ownership marker/tool-role
+separation and encrypted-but-disabled credentials. A future real data migration needs
+its own protected source/provider identity inventory, mappings, target/connection
+limits, key retention, expand/backfill/validate/contract and rollback review. No real
+backup, export, provider role/bootstrap, academic-data downgrade or deployment is
+authorized by this fixture proof. Legacy mode and default-off foundation remain.
+
+Authenticated browser/provider smoke and browser visual/interaction QA: NOT RUN.
+Remote Actions: UNVERIFIED; local command wiring is separate evidence.
+Real issuer/key/timing and provider PostgreSQL compatibility: UNVERIFIED.
+Real mail/activation/runtime data switch/live migration/deployment: NOT RUN.
+Notification integration remains pending; full invitation acceptance/binding and
+broader member/cohort UX remain P05. P02 remains IN PROGRESS, not phase acceptance.
+
+## Exact changed implementation paths/hashes
+
+- backend/alembic_foundation/versions/p0219_import_rehearsal.py — SHA256 cdd9fb375200dde473bc7c532b35cd1750740d63cf649d730e8b3326acc56b78
+- backend/alembic_foundation/versions/p0219_import_rehearsal.sql — SHA256 4af643c5586c84ffda238ef340f2af2a1be79df8c5265d61cf56e6f1c32473cf
+- backend/app/domains/migration/__init__.py — SHA256 03d8ce63e0e4a964b18764cf6538664608dc2afac0b712bf35b9411deb34bc70
+- backend/app/domains/migration/cli_inputs.py — SHA256 26fca4225f5248cfccab7b028eae3a911b7fa5e70ce4e60c0009f51bd3e8a376
+- backend/app/domains/migration/importer.py — SHA256 433001a87c621ac92ec1b38744cb735de8bc3fba1681733c3219be1948b3f5e4
+- backend/app/domains/migration/snapshot.py — SHA256 6df5304fbb0ce55ff157da21e63279e4de437172e8ec72abf0fc5244659c934e
+- backend/tests/foundation/legacy_fixture.py — SHA256 936a7f4cfdcbe8b5922653b3344be8c281097dd902e057d6ddbb2647f776633c
+- backend/tests/foundation/test_database.py — SHA256 26e5ca7c3db0b889010ba37435dd59db4c939e25f01edc81bca7317e3a2148be
+- backend/tests/foundation/test_legacy_historical.py — SHA256 244e67625d765d52752a6968699c8fe4cf9e4f6092b4be6313accf0b28cc1d2d
+- backend/tests/foundation/test_legacy_import.py — SHA256 330dec632071c55823abae577dd6d2831da72d3f33055a6c8963b6b6f57d8eb1
+- backend/tests/foundation/test_legacy_snapshot.py — SHA256 057c28ffa20fb7a4efddcf176a2eca718f60b82babaf9775c8c78b12e1a5de99
+- docs/development.md — SHA256 92c23fcf222077af1f0f62547317d7379d0860e4d051f101023ef40044c266ee
+- scripts/check_foundation.py — SHA256 5aeaf0787acbb088a05dad7d9099fee6931c37d1cb360150ecf08fe9427211d1
+- scripts/check_local.py — SHA256 d6c2a8e019b862e0e3a6b08656576c5c1b7d33199ba9dade62cdee3709c16347
+- scripts/rehearse_legacy.py — SHA256 2ab7cb92caeba764a1f8ccb7ed374c9ec068367e033e0bfa7d0b4f8421fb5504
+
+## Previous checkpoint report (historical evidence)
+
+Current sections supersede earlier pending-state/count statements.
+Prior report SHA256: ce468457ee4d11c178323686eccd44e802b8845aae01452fc01dc9770963b7db.
+
+<details>
+<summary>Preserved frontend, shared-router, protected-transfer and earlier reports</summary>
+
 # P02 completion evidence — minimal foundation UI and conditional shared router
 
 Status: IN PROGRESS, approximately 78%. P02.6 now has a default-off shared router
@@ -2034,6 +2297,8 @@ academic-data downgrade/rollback plan. No phase beyond P02 is authorized here.
 - scripts/check_local.py — SHA256 45fb9ad481fe4653701699a8e598b3ef0ecabe49d9295456c603c916fc49282a
 - scripts/migrate_foundation.py — SHA256 99c224e817e7cd5d577051dcc12e867f3bdf336c6797ade6330938b9be087f27
 - scripts/test_check_foundation.py — SHA256 9db6bd94312fe62e7a6be2ad86f03e90015bce6f55f5221a31dfa7d27119a253
+
+</details>
 
 </details>
 
