@@ -1,3 +1,263 @@
+# P02 completion evidence — protected primary transfer and executive recovery
+
+Status: IN PROGRESS, approximately 69%. Runtime-role protected primary previews,
+confirmed transfer, explicit reasoned executive recovery and signed HTTP now pass.
+This is a partial P02 checkpoint. P02.6–P02.8 remain required; do not advance to P03.
+
+## Source identity and bounded change
+
+- Accepted P01: 0fc1ca53932b94fdcb91ddc20313cbb85ac7edbd.
+- Previous provisioning implementation: d6fd7b8758d177db897ddc7450b7cdde6ae7e9f6.
+- Parent/report: 3c3dd81a0e2deaee35ed18c2b94721febbbeafb6.
+- Protected transfer/recovery implementation: 25a1176ef0176b1119be346e1ba3adcb1e727e90; branch codex/p02-tenant-foundation.
+- Exactly 15 intended implementation paths are recorded. A separate report-only
+  commit preserves this evidence; unrelated documents/work are untouched.
+
+## Implemented behavior and actual proof
+
+Revision p0216 adds a narrow app-only preview root and private authority helper.
+Tenant preview requires the current active designated Primary Admin of an active
+organization. Platform preview requires an explicit current recovery capability,
+matching targeted org and recovery_required state. Directory orgs capability alone
+cannot grant recovery, and a normal tenant admin cannot transfer the designation.
+The org parent lock serializes preview decisions with membership/role/status
+changes. The root rechecks authority and expected version, requires another active
+same-org admin and persists actor/from/to/scope/reason, a confirmation digest and
+five-minute expiry with redacted audit. It leaves designation/roles/epochs unchanged.
+Only one live preview exists per org: the same actor may replace its own preview;
+a different actor conflicts until expiry. Preview rollback/audit failure restores
+the earlier preview. Raw confirmation is returned once and excluded from repr.
+
+Revision p0217 adds an app-only confirmation root. Actor/org/scope, expected version,
+SHA256 confirmation digest, current live preview/expiry, current primary and target
+eligibility are checked again. Server-bound authentication must be within five
+minutes, allowing at most 30 seconds future skew, including after lock waits.
+Identity rows are share-locked in UUID order before the org lock, matching the
+user-before-org order of global security suspension; recovery also locks its grant
+row. Thus a concurrently blocked target cannot become an active primary through
+an unchecked user/organization race. No direct designation/transfer-table grants
+or owner runtime exemption are introduced by these services.
+
+A successful change atomically updates the one primary reference, advances org
+version/access epoch once, completes the preview with a fixed public receipt,
+appends actor/reason/version audit and queues notify_primary_transfer plus a pending
+primary_transfer_notification_requested outbox event. The old primary keeps its
+active admin membership and roles. Explicit recovery restores active org state
+without unblocking the old globally suspended identity, approving a user, remapping
+an account or granting platform authority. Ordinary orgs status cannot substitute
+for this recovery operation. Existing primary and final-instructor guards remain.
+
+The preview UUID is the stable one-use operation identity. Concurrent matching
+confirmations and committed retries after a new pool return the same persisted
+receipt without another designation/job/outbox. Replay still requires matching
+actor/scope/digest/version, current tenant admin or recovery permission and recent
+authentication. A former primary can replay while still an active admin; removal,
+global block or recovery-grant revocation denies cached results. Real audit and
+outbox CHECK failures caught within the service savepoint roll back all earlier
+writes and preserve the preview. Outer rollback/retry is also proved.
+
+The shared internal /v1 router, public /api/v1 through the existing proxy, adds:
+
+- POST /orgs/{org_id}/primary-admin-transfers/preview and POST at its parent for
+  tenant Primary Admin preview/confirmation.
+- POST /platform/organizations/{org_id}/primary-admin-recovery/preview and POST
+  at its parent for explicit executive recovery preview/confirmation.
+- GET /platform/organizations/{org_id}/primary-admin-recovery/jobs/{job_id} for
+  current targeted recovery notification status.
+
+Routes select scope on the server; no input actor/role/scope selector is accepted.
+Both preview and confirmation require recent authentication from production signed
+identity verification. Preview exposes from/to IDs, expiry, confirmation and the
+former-admin retention consequence. Completion accepts only preview ID, expected
+version and confirmation. The required expected_version body field follows the
+existing foundation write convention; a supplied strong If-Match must match the
+quoted version. Weak/mismatching values conflict rather than being ignored.
+This is a documented narrow adaptation of the planned If-Match contract. Responses
+are emitted after commit; Idempotency-Replayed distinguishes first completion and
+receipt replay. Extra fields, boolean/oversized versions, control-character reasons,
+invalid UUIDs and malformed confirmation are rejected without echoing input values.
+
+Revision p0218 adds one app-only safe redacted status root. Tenant job HTTP reads
+can project a transfer notification only for a current active admin; the explicit
+platform recovery status route requires current recovery authority. The root checks
+completed private transfer receipt, stored actor/org/kind/dedup/intent digest and
+matching outbox, returning only the existing nine status fields. Cross-org, absent,
+unauthorized or tampered intent is not_found. The ordinary executive initial-primary
+job route remains specific to its original kind/orgs capability. No direct transfer
+result, confirmation hash, contact/email, private payload, intent hash or lease is
+exposed. Pool reuse after actual HTTP audit failure passes, as do feature-off routes.
+
+Notification intent contains no secret payload or recipient address. Its immutable
+from/to IDs remain in the private transfer record. The job is queued with
+pending_integration; existing invitation workers deliberately ignore this distinct
+kind. Notification worker/provider integration is not supplied or claimed here.
+No inbox delivery, real mail call or notification fake-execution proof is claimed.
+Existing tenant/initial invitation fake-worker and crash reconciliation tests still
+pass separately; their simulated result is never represented as real delivery.
+
+Twenty-six added tests comprise eight preview, ten completion and eight HTTP cases.
+Actual app-role competing confirmations produce one committed change and matching
+receipt replay. The observed actual transfer/removal result was transferred plus
+protected_primary, leaving the new primary valid and the old admin retained.
+An actual PostgreSQL target user lock was observed blocking confirmation; after
+suspension committed, confirmation rechecked and rejected the target with no job.
+Competing recovery preview actors produce one live preview and one conflict.
+HTTP tests use production ES256 signatures with synthetic JWKS transport and actual
+runtime connections. They cover authority/header/claim/body spoofing, current grant
+expiry/revocation, global block with cached tokens, scope isolation, stale input,
+redacted/tampered job status, sanitization and actual audit rollback. HTTP concurrency
+uses the production bounded fixture pool; a separate two-connection DB race proves
+locking. Fixture-owner seeding is not counted as production authority or activation.
+
+## Actual full-gate execution
+
+Developer ran from /tmp:
+
+    PYTHONDONTWRITEBYTECODE=1 python3 /home/wibyte/wibyte-python-lab/scripts/check_local.py
+
+Full log: /home/wibyte/wibyte-python-lab/work/p02-full-evidence-tktDKRNB/P02.5-transfer-full-checks.log
+Raw log SHA256: c3851064cf691ad2deb38dd8a600b71dcc36b037b5871babb1c7ece5485e5644.
+The user-run recorder verifies candidate/log/prior-report hashes, actual observed
+counts, cleanup/race markers and exact staged/committed bytes. Preparation reads
+sources/logs and writes artifact scripts/preview only; developer executes checks
+and original-checkout mutations through the agreed terminal workflow.
+
+| Mandatory group | Actual passes |
+| --- | ---: |
+| Runner contracts/discovery/isolation | 23 |
+| Setup regressions | 16 |
+| Legacy backend/idle | 12 |
+| Registered frontend, four modules | 46 |
+| Foundation, twenty-three modules | 212 |
+| Total | 309 |
+
+All mandatory cases passed without skips. The 212 foundation cases include the
+previous 186 plus 26 new cases. Recreated-target migration/runtime-role smoke is
+separate and not an extra case. Focused runs below are not added to the full total.
+Dynamic discovery still rejects missing/empty/skipped modules without fixed runtime
+count assumptions. All four prior legacy SQLite migrations remain unchanged.
+
+Build passed with 87 modules and npm ci installed 170 locked packages. Lint has
+0 errors and the existing two App.tsx:1159/1165 loadGitStatus dependency warnings.
+JS remains 801.77 kB / 215.19 kB gzip, with the >500 kB warning; Starlette's httpx
+TestClient deprecation remains. No warning suppression or dependency upgrade.
+
+## Runtime, isolation and cleanup
+
+
+
+Unchanged PostgreSQL 17.11 image:
+postgres@sha256:639ab7ceb90e13123085b741fb31ef493fba25463002f6da665352e7b534b652.
+Actual fixture wpl_app / wpl_fixture, Psycopg 3.3.6 binary; worker tests use
+wpl_worker. Non-owner/non-super/BYPASSRLS/create/replication and DDL/escalation
+checks pass; wpl_migrator is the private schema owner, not runtime.
+Check image: sha256:bfc852f33cf0fbc9ff7a61897d599682ac71bc4a2a8e15ba1bc8d2268b896d2e.
+Node image: sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c.
+
+Final owned DB container
+04f8ff33c5db19be497110d6e62aa9cf81af72bbd2a29771973b08d0b1edbfa9
+and internal network
+15dce749c893c1943eae1bfa64928d46eb99fdda64e3ace06c10a5a1d511ddec
+were inspected and removed by exact owned ID; tmpfs data was discarded. Internal
+network, no published ports or host data/socket mounts, read-only allowlisted source
+snapshot and synthetic environment/identities only. Legacy checks remain
+network-none. Mocked runner failure/cleanup contracts are separate evidence from
+actual DB/fixture cleanup. No private env/live DB/student files/provider requests,
+Compose up/service restart/global prune or original labs.wibyte.in action occurred.
+Foundation stays disabled by default; legacy SQLite/Docker lab remains unchanged.
+
+## Focused execution provenance (not additional full-gate cases)
+
+- Protected transfer preview: 194 foundation passes; /home/wibyte/wibyte-python-lab/work/p02-transfer-preview-evidence-3zsFAQyg/transfer-preview-checks.log; raw SHA256 103a05cb321900a13cf95d15ac7229db63a9d77d5eb07e774ec7b3f5d738f280.
+- Confirmed primary transfer/recovery: 204 foundation passes; /home/wibyte/wibyte-python-lab/work/p02-transfer-completion-evidence-5CvazjFw/transfer-completion-checks.log; raw SHA256 b81aba7133717738598b69cc8b92e91ccf4bed3f28d7ff02a65a11fdc39e2796.
+- Signed transfer/recovery HTTP: 212 foundation passes; /home/wibyte/wibyte-python-lab/work/p02-transfer-http-evidence-GMVQ6FBO/transfer-http-checks.log; raw SHA256 d05b325173bf167b632b7153bcd3fe343f917a81fa9051f3037ed8b23fcb43ce.
+
+## Current T01–T35 ledger (implemented surfaces only)
+
+| ID | Current result and limit |
+| --- | --- |
+| T01 | PASS this milestone: 309 tests, build/lint, existing warnings; phase incomplete. |
+| T02 | PASS import/factory tests with socket connect blocked, no legacy modules/DB files. |
+| T03 | PARTIAL: disabled factory and retained legacy checks pass; shared-router activation mounting pending. |
+| T04 | PASS fresh/repeat/concurrent/advisory migration, no import DDL, recreation. |
+| T05 | PASS actual non-owner app/worker attributes and DDL/escalation denials. |
+| T06 | PASS actual composite constraints under explicit disposable write fixture; not mutation RLS proof. |
+| T07 | PASS implemented identity/read, provisioning, protected transfer and separate executive recovery HTTP, pending own /me and sanitized stable errors. |
+| T08 | PASS actual asymmetric crypto and synthetic claim/key/metadata negative matrix. |
+| T09 | PASS synthetic bounded rotation/outage/cache paths; real project compatibility unverified. |
+| T10 | PASS implemented tenant/executive/provisioning plus primary/recovery runtime and signed HTTP scope matrix; no client actor/scope authority. |
+| T11 | PASS scoped pool commit/rollback/error/raised cancellation/PG timeout and HTTP reuse; no transport-disconnect claim. |
+| T12 | PASS implemented reads/current capability revocation plus executive org status/epoch/audit and tenant access suspension/resume; no immediate provider-logout claim. |
+| T13 | PASS atomic executive creation of one pending organization/designated invitation membership, encrypted intent, outbox, audit and receipt; no email binding or activation. |
+| T14 | PASS actual concurrent same-actor/key/body DB and signed HTTP creation, changed-body conflict, actor namespaces, new-pool replay and current authority recheck. |
+| T15 | PASS ordinary runtime services/direct SQL deny primary removal/demotion/suspension; protected transfer/recovery HTTP use separate confirmed paths and no direct designation grants. |
+| T16 | PASS actual app-role concurrent confirmations, version/target/confirmation/recent-auth checks, transfer/removal and target-global-suspension locks; signed HTTP replay matches one committed change. |
+| T17 | PASS active-primary/security-recovery invariants and explicit recovery HTTP restoring active org while preserving old global block and retained admin membership. |
+| T18 | PASS implemented ordinary paths: DB final-instructor races, runtime instructor replacement/history, direct SQL guard and actual assignment-aware read matrix. |
+| T19 | PASS explicit targeted recovery capability, current expiry/revocation checks, stored reason, recent confirmation and atomic recovery audit/notification intent; no self-bootstrap. |
+| T20 | PASS implemented invitation pipelines plus confirmed primary changes with atomic business/receipt/audit/job/outbox, caught failure rollback and new-pool replay; notification jobs remain pending integration. |
+| T21 | PASS actual restricted-worker competing claims, SKIP LOCKED, expiry/reclaim/late completion fencing and durable fake-adapter dedup/crash reconciliation; no universal external exactly-once claim. |
+| T22 | PASS bounded batch/lease/attempts, persisted exponential retry/cap/dead-letter, stored scope/actor/global/member/role/org checks and explicit fixture timestamps without long sleeps. |
+| T23 | PASS implemented invitation encryption and transfer confirmation/receipt/audit/status/error redaction, explicit keys and current intent checks. Notification intent holds no secret payload; imported tokens remain pending. |
+| T24 | PENDING foundation frontend vertical slice. |
+| T25 | PARTIAL HTTP spoofing/pending/cross-org denial passes; frontend/deep-link UI pending. |
+| T26 | PASS bounded source/internal-route prefix contract; no running proxy/browser smoke. |
+| T27 | PENDING explicit fixture SQLite dry-run and historical populated-chain proof. |
+| T28 | PENDING disposable import/count/ID/repository-map idempotency and negative matrix. |
+| T29 | PENDING imported fixture token encryption and explicit personal/mapping preservation. |
+| T30 | PENDING wired safe file primitives and negative cases. |
+| T31 | PENDING atomic replacement and ordinary file behavior proof. |
+| T32 | PENDING actual general-file-route primitive wiring; prior FormData/auth checks retained. |
+| T33 | PASS current snapshot/owned isolated Postgres fixtures; later new modules must register. |
+| T34 | PASS current local mandatory groups/discovery/frontend policy; remote Actions UNVERIFIED. |
+| T35 | PASS implemented failure/timeout/cleanup contracts and actual cleanup; no app service mutation. |
+
+## Remaining work and review limits
+
+P02.6 needs the minimal feature-gated real frontend/client for identity, directory,
+provision/detail and protected primary confirmation, plus conditional mounting of
+the same router in the legacy app with feature-off behavior retained. P02.7 needs
+explicit generated/supplied SQLite fixture dry-run/import, populated historical
+migration proof, idempotent mappings and encrypted token/personal preservation.
+P02.8 needs wired descriptor-relative safe file primitives and route negative cases.
+Complete remaining T01–T35 evidence, then stop for architect review before P03.
+
+Notification jobs remain pending_integration without a notification worker/provider.
+Complete invitation acceptance, verified binding and full account/email UX remain
+P05. No production key/provider/identity bootstrap or feature activation was done.
+Authenticated browser/provider smoke: NOT RUN, as previously deferred.
+Remote Actions: UNVERIFIED; local evidence remains separate.
+Real issuer/key/timing/provider PostgreSQL compatibility/connection limits: UNVERIFIED.
+Real mail, deployment and live backup/export/import: NOT RUN.
+Fixture downgrade proof does not authorize real academic-data down-migration.
+P02 remains IN PROGRESS; this is not phase acceptance.
+
+## Exact changed implementation paths/hashes
+
+- backend/alembic_foundation/versions/p0216_transfer_preview.py — SHA256 8416588d595b4377d62e1562a0c21825f0fc612234c3c1034cf4035e41deeab8
+- backend/alembic_foundation/versions/p0216_transfer_preview.sql — SHA256 f861301dfa55585d4ceedcb578e6c86743b3fce2e3a1e32e5c1cb39ffdaf2388
+- backend/alembic_foundation/versions/p0217_transfer_completion.py — SHA256 43916855197e55cbab8eea1dfcf756575d77137699918c9307b4a584f9ec9685
+- backend/alembic_foundation/versions/p0217_transfer_completion.sql — SHA256 3e9734480fd810b74e8a50882bff88934c5bfac7dcf1661336414a3b193f6a03
+- backend/alembic_foundation/versions/p0218_transfer_job_read.py — SHA256 1eb2b9f0028ac28178e808dd87da65db41cd739e0ff2d2fd5000335dc783d690
+- backend/app/domains/organizations/requests.py — SHA256 330820e843e26bb1efb4395ba3b10ddfd9b12f78bf9416fe8f72b68d740cd82c
+- backend/app/domains/organizations/transfers.py — SHA256 fc3799a6e7f5ce9b72cf4e369fb69d487d3f8d73944281b6b3a24833c7a3ac0c
+- backend/app/foundation/api.py — SHA256 16d5b266b1f2303d7217b35d9eaa69687fbebb1e81172a5f3816709aef8a6c14
+- backend/tests/foundation/test_database.py — SHA256 95b7d79daac0cb161dd0d297a7be15afc7cf7fa7b358af525b41460f0990c249
+- backend/tests/foundation/test_http_transfers.py — SHA256 97a83bc20512855644eb7e1bd538fdd02404e5c2d10edd6a929db9c2c0f9409b
+- backend/tests/foundation/test_read_rls.py — SHA256 59f9b92f423772306655746b7996ef7ea4eb14cf68d3e33dc40997121736e8cf
+- backend/tests/foundation/test_transfer_completion.py — SHA256 d702642b9a6d9661680e096d5c844e1e74ca92ee1a24bef279b14f157eb50c14
+- backend/tests/foundation/test_transfer_preview.py — SHA256 a74e0f23ed3c9095af2091b658242cff54ba51526fd6bdf90159d89fd2e3e705
+- docs/development.md — SHA256 230c239f3638ad06643152b455094aeaee05cd37a538d8226f4410d01038e6df
+- scripts/check_foundation.py — SHA256 c975d79e08422fe84bad8234dedf6a12100406953cbc8655e3197f46e07c277d
+
+## Previous checkpoint report (historical evidence)
+
+Current sections supersede earlier pending-state/count statements.
+Prior report SHA256: 5a05fb01be114dca98f1a63f6cfcbdccf8a5ebec182b1ebcc01c1b1bd050b012.
+
+<details>
+<summary>Preserved provisioning, executive metadata, jobs and earlier reports</summary>
+
 # P02 completion evidence — pending organization provisioning checkpoint
 
 Status: IN PROGRESS, approximately 63%. Executive creation, scoped creation
@@ -1500,6 +1760,8 @@ academic-data downgrade/rollback plan. No phase beyond P02 is authorized here.
 - scripts/check_local.py — SHA256 45fb9ad481fe4653701699a8e598b3ef0ecabe49d9295456c603c916fc49282a
 - scripts/migrate_foundation.py — SHA256 99c224e817e7cd5d577051dcc12e867f3bdf336c6797ade6330938b9be087f27
 - scripts/test_check_foundation.py — SHA256 9db6bd94312fe62e7a6be2ad86f03e90015bce6f55f5221a31dfa7d27119a253
+
+</details>
 
 </details>
 
