@@ -27,6 +27,10 @@ FRONTEND_TESTS = (
     "frontend/tests/apiUrls.test.mjs",
     "frontend/tests/apiClient.test.mjs",
     "frontend/tests/accountLookup.test.mjs",
+    "frontend/tests/foundationClient.test.mjs",
+    "frontend/tests/foundationIdentity.test.mjs",
+    "frontend/tests/foundationOrganizations.test.mjs",
+    "frontend/tests/foundationPrimary.test.mjs",
     "frontend/tests/frontendPolicy.test.mjs",
 )
 TREES = {
@@ -252,16 +256,12 @@ def execute(prepare):
                 "WPL_GITHUB_CLIENT_SECRET": "synthetic-secret",
             }, env,
         )
-        run_frontend_contracts(snapshot, env)
-        run_checked("Mandatory disposable Postgres foundation",
-                    [sys.executable, str(snapshot / "scripts/check_foundation.py"),
-                     *(["--prepare"] if prepare else [])],
-                    timeout=600, env=env, cwd=snapshot)
         frontend_settings = {
             "npm_config_userconfig": "/tmp/npm-user.conf",
             "npm_config_globalconfig": "/tmp/npm-global.conf",
             "npm_config_cache": "/tmp/npm-cache",
             "CI": "true", "VITE_API_URL": "/api",
+            "VITE_WPL_FOUNDATION_ENABLED": "true",
             "VITE_SUPABASE_URL": "https://supabase.example.invalid",
             "VITE_SUPABASE_PUBLISHABLE_KEY": "synthetic-public",
         }
@@ -270,6 +270,11 @@ def execute(prepare):
             ["npm", "--prefix", "/app/frontend", "ci", "--no-audit", "--no-fund"],
             frontend_settings, env, network=True, writable=True, timeout=300,
         )
+        run_frontend_contracts(snapshot, env)
+        run_checked("Mandatory disposable Postgres foundation",
+                    [sys.executable, str(snapshot / "scripts/check_foundation.py"),
+                     *(["--prepare"] if prepare else [])],
+                    timeout=600, env=env, cwd=snapshot)
         for task in ("build", "lint"):
             run_container(
                 "Frontend " + task, NODE_IMAGE, snapshot,

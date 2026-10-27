@@ -21,7 +21,7 @@ from backend.app.domains.organizations.transfers import preview_transfer, confir
 from backend.app.domains.identity.types import VerifiedIdentity
 from backend.app.domains.identity.verification import InvalidIdentity
 
-router=APIRouter(prefix='/v1')
+router=APIRouter()
 
 
 class APIError(Exception):

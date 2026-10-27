@@ -22,6 +22,8 @@ import LoginScreen from "./LoginScreen";
 import ResetPasswordScreen from "./ResetPasswordScreen";
 import { supabase } from "./lib/supabase";
 import { API_URL, apiFetch } from "./lib/api";
+import FoundationEntry from "./features/foundation/FoundationEntry";
+import { isFoundationRoute } from "./features/foundation/route";
 
 
 
@@ -3206,9 +3208,11 @@ function AuthenticatedApp() {
 
 
 function App() {
-  return window.location.pathname === "/reset-password"
-    ? <ResetPasswordScreen />
-    : <AuthenticatedApp />;
+  if (window.location.pathname === "/reset-password") return <ResetPasswordScreen />;
+  if (isFoundationRoute(import.meta.env.VITE_WPL_FOUNDATION_ENABLED, window.location.pathname)) {
+    return <FoundationEntry />;
+  }
+  return <AuthenticatedApp />;
 }
 
 export default App;

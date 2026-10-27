@@ -1,4 +1,4 @@
-"""Independent factory mounting the same /v1 router used for future activation."""
+"""Independent factory mounting the shared router, standalone at /v1 or mounted by trusted composition."""
 from contextlib import asynccontextmanager
 from uuid import uuid4
 
@@ -17,12 +17,14 @@ from backend.app.foundation.db import FoundationDatabase
 from backend.app.domains.jobs.payloads import PayloadCipher
 
 
-def create_app(settings: FoundationSettings,*,identity_settings: IdentitySettings | None=None,identity_transport=None,payload_cipher: PayloadCipher | None=None) -> FastAPI:
+def create_app(settings: FoundationSettings,*,identity_settings: IdentitySettings | None=None,identity_transport=None,payload_cipher: PayloadCipher | None=None,route_prefix: str='/v1') -> FastAPI:
     """Explicit trusted settings/resources; no dotenv or runtime bypass flags.
 
     identity_transport is an injected HTTP transport for isolated fixtures. Tokens
     still pass through the production verifier; request data cannot select it.
     """
+    if route_prefix not in ('','/v1'):
+        raise FoundationConfigurationError('Foundation route prefix must be /v1 or an explicit mounted root.')
     if payload_cipher is not None and not isinstance(payload_cipher,PayloadCipher):
         raise FoundationConfigurationError('An explicit payload cipher is required.')
     if settings.enabled and not isinstance(identity_settings,IdentitySettings):
@@ -49,7 +51,7 @@ def create_app(settings: FoundationSettings,*,identity_settings: IdentitySetting
     app.state.foundation_database=database
     app.state.foundation_verifier=verifier
     app.state.foundation_payload_cipher=payload_cipher if settings.enabled else None
-    if settings.enabled: app.include_router(router)
+    if settings.enabled: app.include_router(router,prefix=route_prefix)
 
     def error(request,status,code,message,**extra):
         request_id=getattr(request.state,'request_id',uuid4().hex)

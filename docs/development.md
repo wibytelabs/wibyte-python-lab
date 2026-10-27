@@ -1004,3 +1004,190 @@ spoofed header/claim/body denials, recent authentication, bounded inputs/If-Matc
 concurrent receipt replay, stale/blocked actors/targets, redacted/tampered status,
 actual audit failure rollback/error sanitization/pool reuse and feature-off routes.
 Domain tests separately exercise two-connection locks and suspension/removal races.
+
+### P02.6 default-off shared router composition
+
+The legacy backend entry point now captures only process WPL_FOUNDATION_*,
+WPL_APPLICATION_* and WPL_AUTH_* settings before loading legacy config/dotenv.
+Foundation activation is explicit and defaults false. A foundation flag added by
+legacy dotenv does not activate the mount; no legacy Supabase URL, SQLite URL,
+signing key or provider settings become foundation defaults. No private env file
+or running service is changed by this implementation or its checks.
+
+mount_foundation(parent, mapping) uses the same independent factory, domain/API
+router, production identity verifier, resource settings and error handlers. When
+disabled it returns without constructing child resources or changing legacy
+routes/lifespan/state. When explicitly enabled it mounts one child at /v1. Trusted
+factory composition includes the shared endpoint router with an empty child prefix;
+the independent factory retains its default /v1 prefix. Thus the same public
+/api/v1/me still maps through the unchanged proxy to internal /v1/me. /v1/v1/me
+and backend /api/v1/me do not gain duplicate endpoints. No caller selects a prefix.
+
+The child boundary preserves legacy authentication, route exception bodies and
+SQLite behavior, even when the foundation is enabled. Parent CORS still applies.
+Mounted ASGI apps do not automatically run child lifespan, so composition explicitly
+enters the child first, verifies the actual non-owner runtime role, then enters the
+original legacy lifespan and preserves its yielded state. Shutdown unwinds legacy
+first and closes DB/verifier resources, including on role-check, legacy-start or
+legacy-stop failure. An invalid foundation role therefore cannot start legacy
+background tasks. Duplicate/conflicting /v1 routes are rejected before resources.
+
+Production activation requires the explicit process WPL_FOUNDATION_ENABLED=true,
+WPL_APPLICATION_DATABASE_URL and selected WPL_AUTH_* configuration documented above,
+plus separately approved runtime/provider/key configuration. No activation is
+performed here. The legacy entry point supplies no default encryption key/cipher;
+new provisioning without a trusted composition-supplied cipher remains a sanitized
+503, while reads and committed receipt replay retain their existing behavior.
+The factory still supports explicit synthetic cipher/transport injection for tests,
+not a client header or deployed authentication bypass.
+
+Eight mandatory Postgres-group tests cover default-off nonconstruction, actual
+signed pending /me through the mount, prefix and capability denials, lifecycle
+ordering/state/cleanup, startup/shutdown failure, invalid/duplicate configuration,
+parent CORS/errors and actual legacy main composition in separate interpreters.
+Those subprocesses use mocked Docker, mock-only JWKS, blocked legacy provider
+requests, blocked dotenv reads and owned temporary SQLite paths. They exercise
+explicit off, default off despite simulated dotenv activation, and explicit on;
+legacy health/authentication/GUI/CORS and SQLite identity remain asserted. This is
+local composition proof, not a running reverse-proxy/browser/provider smoke or
+permission to activate/restart the actual app. Frontend wiring remains next.
+
+### P02.6 foundation browser client contracts
+
+frontend/src/features/foundation/client.ts provides typed production requests for
+own /v1/me, executive directory/detail, tenant detail/member selection, idempotent
+organization creation, initial/tenant/recovery job status and protected transfer/
+recovery preview/confirmation. runtime.ts composes it with the existing apiUrls
+and apiFetch helpers. Default /api therefore becomes /api/v1; explicit API prefixes,
+bearer lookup and current cookie defaults remain P01 behavior. No new Supabase
+public-table read, JWT role decoding or alternate identity/cookie path is added.
+
+Creation takes a caller-retained stable Idempotency-Key and only the six approved
+fields. Confirmation takes only the selected preview ID, expected version and
+one-use confirmation, with a matching strong If-Match header. Recovery uses its
+explicit platform routes. Unexpected actor/role/designation fields are not forwarded.
+IDs and retry keys fail locally before session lookup if malformed. Server policy
+still authorizes every request; client validation and hidden UI controls grant no
+capability. Pending identity/member state, multiple roles, masked tenant fields,
+version conflicts and recent-auth errors retain their backend meanings.
+
+Success responses are decoded into fixed public projections with bounded pages,
+known states/kinds/capabilities and valid IDs/counters. Creation/completion require
+the proper success status plus explicit Idempotency-Replayed evidence. No response
+can turn simulated or provider_accepted into delivered, or silently treat 202 as
+committed creation. Unknown payload/token/hash/lease extras are discarded. Errors
+retain HTTP status, known fixed code, safe field names and server correlation ID;
+raw response/provider/SQL messages are not displayed. Abort signals propagate and
+network failures use a fixed message. No new dependency is needed for this client.
+
+Twelve mandatory frontend contract cases exercise these actual production client
+methods through the P01 URL/auth adapter with synthetic responses and tokens.
+The existing result policy still rejects skips, TODOs, empty modules and failures;
+the new module is explicitly declared by check_local.py and its runner test.
+This slice prepares client/runtime integration; the feature-gated UI and component
+wiring are the next slice and are not claimed as implemented here. The full gate
+also checks TypeScript build/lint and the prior default-off backend mount changes.
+
+### P02.6 pending identity and account-change UI
+
+An explicit public VITE_WPL_FOUNDATION_ENABLED=true selects /foundation and its
+subpaths. Other values default to the existing legacy App; /reset-password keeps
+its original recovery screen. The flag chooses presentation only, never authority.
+FoundationEntry uses the production foundationApi/P01 authenticated client and
+Supabase auth session lifecycle. It never queries public.profiles or requires a
+pending identity to pass the legacy approved-only lab gate. Existing LoginScreen
+remains the sign-in view for an absent session. No private frontend env or running
+service is modified; backend authorization is still required on every request.
+
+The hook-based page uses a small external store via useSyncExternalStore with
+unconditional hooks. Auth events clear account-specific data before a new /v1/me
+request, abort prior work and fence stale completions, initial-session races and
+cleanup/remount generations. Sign-out also clears data; an old sign-out result
+cannot overwrite a newer sign-in event. Only a minimal subject reference is held
+by the controller; session/token data is never projected into view state. Failed
+or mismatched own-me responses produce fixed errors with safe request references.
+Refresh retries current access without granting roles or approving the identity.
+
+The actual dark/purple IdentityPanel renders loading, login, fixed error, pending/
+suspended/declined status and truthful membership availability. Executive/recovery
+panels require an active global state and the respective current server capability.
+Membership roles and pending organization status are retained as returned; pending
+admin placeholders do not become effective access. Account controls retain an
+explicit Legacy lab link. CSS stays scoped beneath the foundation shell. Directory,
+provisioning and protected-transfer forms are the next UI slice, not claimed here.
+
+Twelve new mandatory contracts exercise production session/controller/client paths,
+account switches, sign-out, retry, stale/mismatched responses, initial-session races,
+StrictMode-style effect cleanup/remount, route gating and real TSX component output.
+The component harness transpiles the actual TSX in memory with the locked project
+TypeScript and renders it with locked React/ReactDOMServer; it does not substitute
+copies of the views or call real providers. SSR proves render output/no render-time
+side effects; controller tests prove effect-driven data flow separately. This is
+not browser interaction or authenticated provider smoke, which remains NOT RUN.
+
+check_local.py now performs the same locked npm ci dependency stage before the
+mandatory frontend contracts, so offline contracts can load the existing compiler
+and React dependencies. No dependency/version/lock change is introduced. Contracts
+still run network-none with a read-only snapshot and the strict no-skip/nonempty
+policy, and build/lint remain mandatory. The isolated frontend build receives the
+public foundation flag true to compile the real new branch; that synthetic build
+setting does not enable any deployed/running feature. Backend/legacy fixture checks
+remain mandatory, and installation/test timeout/failure retains owned cleanup.
+
+### P02.6 executive organization UI
+
+The active orgs capability now opens the bounded executive directory, paginated
+search, detail links and pending-organization creation form. The real production
+client supplies all data and server authority. Pending/recovery status stays
+explicit; creation does not approve a user or activate tenant access. The receipt
+and manually refreshed initial job show queued/pending integration, simulated test
+results or provider acceptance without claiming inbox delivery or invitation acceptance.
+The form sends only the six supported fields and uses one in-memory request key
+and frozen body for retries after an uncertain result. Duplicate submits are blocked.
+A server validation rejection unlocks editing; starting another uncertain request
+is an explicit action with a warning to inspect the directory first. No form/key is
+written to browser storage or URLs. The root retains a same-account operation across
+access refresh; logout, account change or definitive capability loss clears it.
+Read cancellation and account/generation fences reject stale directory/detail/job
+responses. Unknown routes and inaccessible details show errors rather than substitute
+records. Protected transfer/recovery controls remain the next UI slice.
+
+Mandatory contracts cover actual controller/client requests and real TSX output.
+The shared in-memory TSX loader resolves actual local views using locked React and
+TypeScript; these contracts remain distinct from browser/provider smoke (NOT RUN).
+No dependencies, deployment flags, private settings or running services are changed.
+
+### P02.6 protected transfer and recovery UI
+
+The account-bound primary-change panel uses the production client and separate
+server-selected tenant transfer and platform recovery endpoints. Active admin
+memberships only make the ordinary organization selector available. Current tenant
+detail must identify that membership as Primary Admin before fetching replacement
+members or offering a preview; replacements are active same-org admins shown by the
+paginated server roster. Current global target eligibility remains a server check.
+A recovery capability alone never opens a tenant roster. Recovery instead takes an
+explicit reviewed organization reference, current version, eligible membership
+reference and reason; the server requires recovery_required state and a live grant.
+The executive directory can supply organization/version references when orgs access
+is independently available. No capability or tenant membership is inferred from it.
+
+The preview displays server-confirmed old/new membership references, organization,
+expected version, expiry, reason and consequences before an explicit checkbox and
+confirmation. The former primary retains ordinary admin; global suspensions are not
+removed. Opaque confirmation material stays in a private in-memory controller value,
+never view state, DOM, storage, URL or diagnostics. Input changes are frozen during
+review, duplicate submissions blocked, and uncertain confirmations reuse the exact
+saved request to retrieve the committed result. Expired unsubmitted previews require
+new review; uncertain receipts may be retried after expiry because the server can
+return the original committed result. Definite version/permission/recent-auth errors
+clear the confirmation and explain reload/new review or recent sign-in. No client
+clock, identity metadata or UI checkbox grants authority or recent authentication.
+
+Same-account access refresh preserves a pending workflow; account changes, logout,
+removed membership or recovery-grant loss clear/fence it. Cancellation and sequence
+checks discard old detail/member/job responses. Successful changes show the committed
+version and a separately refreshed redacted notification job, with pending integration
+and no delivery claim. Root hooks remain unconditional. Mandatory contracts exercise
+real client paths, version/conflict/expiry/retry/account races and actual TSX output.
+These are local synthetic contracts; browser and authenticated provider smoke remain
+NOT RUN. No private env, live data, external delivery or deployed feature is changed.

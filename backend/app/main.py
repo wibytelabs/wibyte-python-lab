@@ -1,3 +1,12 @@
+import os
+
+# Foundation activation uses explicit process settings captured before the legacy
+# config module loads dotenv. No legacy URL/signing-key/identity fallback is used.
+_foundation_environment = {
+    key: value for key, value in os.environ.items()
+    if key.startswith(('WPL_FOUNDATION_', 'WPL_APPLICATION_', 'WPL_AUTH_'))
+}
+
 from backend.app import config
 from fastapi import Response
 from backend.app.routes.gui_proxy import router as gui_proxy_router, issue_gui_url
@@ -642,3 +651,10 @@ def delete_lab(
         "lab_id": lab_id,
         "status": "removed",
     }
+
+
+# Same foundation router and handlers as the independent fixture factory. The
+# default-off mount leaves legacy routes, errors, SQLite and lifespan unchanged.
+from backend.app.foundation.mount import mount_foundation
+
+mount_foundation(app, _foundation_environment)

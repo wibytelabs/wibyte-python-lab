@@ -119,6 +119,10 @@ class RunnerTests(unittest.TestCase):
             command = run.call_args.args[3]
             self.assertIn("/app/scripts/run_frontend_tests.mjs", command)
             self.assertIn("/app/frontend/tests/accountLookup.test.mjs", command)
+            self.assertIn("/app/frontend/tests/foundationClient.test.mjs", command)
+            self.assertIn("/app/frontend/tests/foundationIdentity.test.mjs", command)
+            self.assertIn("/app/frontend/tests/foundationOrganizations.test.mjs", command)
+            self.assertIn("/app/frontend/tests/foundationPrimary.test.mjs", command)
             self.assertIn("/app/frontend/tests/frontendPolicy.test.mjs", command)
             self.assertTrue(all("/app/" + name in command for name in runner.FRONTEND_TESTS))
             self.assertIn("scripts/run_frontend_tests.mjs", runner.FILES)

@@ -1,0 +1,36 @@
+.foundation-shell { height: 100dvh; overflow: auto; padding: clamp(20px, 4vw, 48px); background: #111214; color: #e8e6ef; }
+.foundation-header { max-width: 1000px; margin: 0 auto 28px; display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+.foundation-eyebrow { color: #b995f5; font-size: .8rem; text-transform: uppercase; letter-spacing: .12em; margin: 0 0 6px; }
+.foundation-header h1 { font-size: clamp(1.5rem, 4vw, 2.2rem); margin: 0; }
+.foundation-header nav { display: flex; gap: 16px; align-items: center; }
+.foundation-shell a { color: #c6a6ff; }
+.foundation-shell button { border: 1px solid #7752aa; background: #38244f; color: #f4edff; border-radius: 8px; padding: 9px 16px; cursor: pointer; }
+.foundation-shell button:focus-visible, .foundation-shell a:focus-visible { outline: 2px solid #c6a6ff; outline-offset: 4px; }
+.foundation-card { max-width: 1000px; margin: 0 auto 18px; padding: clamp(18px, 3vw, 28px); border: 1px solid #39323f; border-radius: 14px; background: #1b1a20; }
+.foundation-card h2 { font-size: 1.15rem; margin: 0 0 12px; }
+.foundation-card p { line-height: 1.6; }
+.foundation-muted { color: #b1a9bf; font-size: .9rem; overflow-wrap: anywhere; }
+.foundation-memberships { padding: 0; list-style: none; }
+.foundation-memberships li { display: flex; gap: 12px; flex-wrap: wrap; padding: 14px 0; border-top: 1px solid #39323f; }
+.foundation-memberships strong { flex: 1 1 200px; }
+.foundation-memberships span { color: #c2b8cf; }
+.foundation-shell .login-shell { min-height: 0; }
+
+.foundation-shell .foundation-organizations section + section { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #443457; }
+.foundation-shell .foundation-toolbar { display: flex; align-items: end; justify-content: space-between; flex-wrap: wrap; gap: .75rem; }
+.foundation-shell .foundation-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 1rem; border: 0; padding: 0; margin: 1rem 0; }
+.foundation-shell label { display: grid; gap: .4rem; font-size: .95rem; }
+.foundation-shell input, .foundation-shell textarea, .foundation-shell select { width: 100%; box-sizing: border-box; padding: .65rem; color: #f3edf9; background: #18111f; border: 1px solid #76618d; border-radius: .4rem; font: inherit; }
+.foundation-shell :is(input,textarea,select):focus-visible { outline: 2px solid #c8a7fa; outline-offset: 2px; }
+.foundation-shell textarea { min-height: 6rem; resize: vertical; }
+.foundation-shell :disabled { opacity: .65; cursor: default; }
+.foundation-shell .foundation-directory { list-style: none; padding: 0; display: grid; gap: .8rem; }
+.foundation-shell .foundation-directory li { display: grid; gap: .35rem; justify-items: start; }
+.foundation-shell .foundation-detail { display: grid; grid-template-columns: minmax(6rem, 1fr) 2fr; gap: .5rem 1rem; overflow-wrap: anywhere; }
+.foundation-shell .foundation-detail dd { margin: 0; }
+.foundation-shell .foundation-error, .foundation-shell .foundation-field-error { color: #ffc5cc; }
+.foundation-shell .foundation-result { border: 1px solid #9272bf; border-radius: .5rem; padding: 1rem; overflow-wrap: anywhere; }
+.foundation-shell .foundation-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.foundation-shell .foundation-confirm { display: flex; align-items: start; gap: .75rem; margin: 1rem 0; }
+.foundation-shell .foundation-confirm input { width: 1.2rem; height: 1.2rem; flex-shrink: 0; margin-top: .2rem; }
