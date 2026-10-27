@@ -1191,3 +1191,136 @@ and no delivery claim. Root hooks remain unconditional. Mandatory contracts exer
 real client paths, version/conflict/expiry/retry/account races and actual TSX output.
 These are local synthetic contracts; browser and authenticated provider smoke remain
 NOT RUN. No private env, live data, external delivery or deployed feature is changed.
+
+### P02.7 explicit protected SQLite snapshot dry run
+
+The first migration rehearsal slice is read-only. scripts/rehearse_legacy.py has no
+target option or default source; it never imports legacy config/main/models or reads
+private environment, provider data or workspace files. Supply a consistent, private,
+regular copy named *.snapshot.sqlite3 with its known SHA256. Absolute path, current
+ownership, no group/other access, one hard link, no symlink/sidecar, a 64 MiB byte
+bound and exact checksum are required before parsing. Do not point this tool at the
+working data/wpl.db or create a live backup/export as part of this phase. No command
+here takes a live snapshot. Generated disposable test fixtures supply the evidence.
+
+Example with an already supplied protected snapshot (placeholder values):
+
+```bash
+cd /tmp
+PYTHONDONTWRITEBYTECODE=1 python3 \
+  /home/wibyte/wibyte-python-lab/scripts/rehearse_legacy.py \
+  --snapshot /absolute/path/protected.snapshot.sqlite3 \
+  --sha256 EXPECTED_SNAPSHOT_SHA256
+```
+
+The bounded source is copied into private process memory and deserialized into an
+in-memory query-only SQLite connection, with trusted schema disabled and bounded
+SQL work/rows/text. The source file is never opened for writing; no target/provider
+connection exists. Integrity, exact known tables/current historical head/columns,
+UUIDs, timestamps, required credential shape, relationships and repository/provider
+IDs/owner/name consistency are checked. Extra views/triggers/virtual tables, orphan
+or cross-owner lab references and ambiguous duplicate repository/provider ownership
+fail with static redacted codes. Profile emails are data, never identity mappings;
+duplicate emails do not merge people. Stable source-kind/UUID maps and owner/repo
+references are retained in the private plan. The public JSON contains counts and
+checksums only, reports personal scope/no org assignment and requires future explicit
+trusted identity binding. It prints no tokens, emails, names, repository/container
+values or source row contents. Source data stays private in memory with redacted repr.
+
+Generated fixtures execute the unchanged legacy revision bodies through Alembic
+Operations, bypassing legacy dotenv/config; the fresh empty chain reaches head and
+then gets synthetic rows. A separate populated 553a7ddf4183 fixture proves the
+unchanged 3e58a6eb699a NOT NULL token/expiry additions fail without defaults. The
+revision is not changed or silently stamped, and no refresh token/expiry is invented.
+The inspector rejects that historical snapshot with historical_revision_requires_review.
+A bounded compatibility path and confirmed disposable import remain next; this dry
+run alone does not complete T27–T29 or migrate the running application.
+
+Twelve mandatory foundation cases include actual historical failure, source-byte/
+mtime and disposable Postgres count preservation, stable maps, privacy, invalid
+relationships/duplicates/schema/bounds, unsafe snapshot guards and real CLI invocation
+from /tmp. The new module is registered; source snapshots include its helper and CLI.
+No application tests are skipped, and no live DB/private env/provider effects are
+required for this rehearsal.
+
+### P02.7 explicit historical archival compatibility
+
+The unchanged populated 553a7ddf4183 migration failure remains a required regression.
+An explicit --historical-policy archive_for_reauthorization now permits that exact
+older schema to be read directly for archival rehearsal. Default inspection still
+rejects it. Other unknown/partial revisions or policy values remain rejected. This
+path never executes a source upgrade or stamps a newer revision. Its source revision
+is preserved in the private plan/report; missing profile/refresh-token/expiry fields
+remain absent rather than fabricated. The existing access token stays private and
+must be encrypted by the later import boundary; it is never submitted to a provider.
+The report marks all historical credential records disabled for reauthorization.
+The policy cannot approve an identity, grant membership, invent institution scope or
+make old credentials usable. Confirmed target import is the next separate slice.
+
+Six new mandatory tests use the actual populated historical schema: unchanged source
+bytes/mtime/revision, missing fields and safe output, default/unknown-policy denial,
+unsupported later revision denial, original owner/repository validation, and actual
+CLI explicit-policy handling. This compatibility reader is not a repair of the
+running installation or authorization to upgrade/export its live SQLite database.
+
+### P02.7 confirmed disposable personal archive import
+
+Revision p0219 adds private RLS-enabled legacy_import_runs/legacy_import_artifacts.
+Neither app nor worker receives read/write authority. Immutable run/artifact records
+preserve stable source/target IDs, original owner and repository references, original
+revision, private metadata and checksums. Only personal scope is permitted; no org
+assignment or runtime lab/container activation exists. Existing migration_mappings
+receives reconciled imported references. This is an explicit archival bridge for the
+P02 rehearsal, not the P03 runtime data switch or an institution/account inference.
+No source workspace files/code are read or exported. Source container references are
+private metadata only and never executed, resumed or supplied to Docker.
+
+Default rehearse_legacy.py is still read-only. Import requires every explicit input:
+--confirm-disposable-import, --confirm-source-sha256 matching the inspected source,
+--disposable-target-url, --fixture-owner, --source-namespace, --reason, --key-file and
+--key-reference. The optional --identity-bindings is a private JSON object mapping
+canonical source student UUIDs to distinct existing auth UUIDs. Emails never bind
+identities. Missing mappings remain unbound personal archive owners; binding does
+not create/approve a user, alter its global state or create memberships/roles.
+Unknown, repeated or missing target identity IDs fail rather than guessing a merge.
+
+The tool accepts only fixture-db / wpl_fixture / wpl_migrator, verifies the connected
+role is the actual non-super/non-BYPASSRLS schema owner and matches the database's
+wpl.disposable.rehearsal:<run-owner> comment to the explicit ownership nonce. The
+owned fixture runner establishes that comment and passes its synthetic nonce. No
+remote/production target, default env URL or production import mode is supported.
+The rehearsal marker is an accidental-target safeguard, not a generic authorization
+system; a future real migration needs a separately reviewed target/rollback plan.
+Do not substitute a live target or read private deployment settings for these inputs.
+
+All credential records, including current-head ones, are archived encrypted and
+marked reauthorization_required. Existing AES-256-GCM envelopes bind personal owner,
+namespace operation, target artifact, purpose and key reference. Keys resolve before
+target connection/transaction. Private key input is exactly 32 bytes, with explicit
+reference and owner-only regular-file/no-follow/one-link/bounds checks; mapping input
+is likewise private/bounded and rejects duplicate keys. Missing/wrong keys never
+fall back. Retain the recorded key for any later authorized archival decryption.
+Old-schema refresh/expiry fields remain unknown; no synthetic usable expiry/token is
+invented. Tokens/expiry values are absent from archive metadata and public reports.
+No provider calls, delivery operations or runtime credential activation are present.
+
+Namespace advisory locking serializes concurrent imports. A committed identical
+source/binding/reason request returns a reconciled replay, retaining its original
+ciphertext despite a fresh encryption nonce during preparation. Changed source or
+binding/reason conflicts. Every artifact, owner/repository reference, mapping, count,
+metadata/source checksum and stored archive digest is reconciled before success;
+corruption is rejected, not repaired silently. The journal, artifacts and mappings
+share one transaction/savepoint, including caught SQL errors and outer rollback.
+CLI success is printed only after its outer connection context commits. Existing
+source bytes and users/orgs/memberships remain unchanged except that explicit target
+identity references may be recorded in this private archive. Public output has safe
+counts/checksums/status only. No tokens, metadata values, DSNs or key bytes are logged.
+
+Thirteen new mandatory cases use actual disposable Postgres: count/UUID/owner/repo
+reconciliation, encrypted round trip, new-pool and concurrent idempotency, changed
+source and explicit-binding denial, ownership/confirmation rejection, real mapping
+CHECK failure rollback, outer rollback/corruption rejection, runtime read denial,
+immutable/secret-metadata constraints, historical disabled credentials, key/input
+failures and actual confirmed CLI commit/replay/non-fixture refusal. Earlier snapshot
+and historical cases remain mandatory. Fixture/schema cleanup remains ownership-checked;
+no live source export or configured provider/migration target is accessed.

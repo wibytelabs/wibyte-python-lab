@@ -17,7 +17,7 @@ FILES = (
     "scripts/setup.py", "scripts/test_setup.py", "scripts/test_deployment.py",
     "scripts/test_idle_defaults.py", "scripts/check_local.py",
     "scripts/test_check_local.py", "scripts/check_foundation.py",
-    "scripts/test_check_foundation.py", "scripts/migrate_foundation.py", "scripts/run_frontend_tests.mjs", "frontend/package.json",
+    "scripts/test_check_foundation.py", "scripts/migrate_foundation.py", "scripts/rehearse_legacy.py", "scripts/run_frontend_tests.mjs", "frontend/package.json",
     "frontend/package-lock.json", "frontend/index.html",
     "frontend/eslint.config.js", "frontend/vite.config.ts",
     "frontend/tsconfig.json", "frontend/tsconfig.app.json",

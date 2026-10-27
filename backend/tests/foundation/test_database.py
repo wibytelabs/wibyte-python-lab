@@ -61,6 +61,9 @@ with patch.object(socket.socket, 'connect', side_effect=AssertionError('network 
     from backend.app.domains.jobs.transitions import DeliveryMaterial
     from backend.app.domains.organizations.transfers import preview_transfer, TransferPreview, confirm_transfer, TransferCompletion
     from backend.app.domains.organizations.requests import PrimaryTransferPreview, PrimaryTransferConfirmation
+    from backend.app.domains.migration.snapshot import inspect_snapshot, SnapshotError
+    from backend.app.domains.migration.importer import prepare_import, import_prepared
+    from backend.app.domains.migration.cli_inputs import FileKeys, read_bindings
     from backend.app.foundation.mount import mount_foundation
     from backend.app.foundation.app import create_app
     from backend.app.foundation.settings import FoundationSettings, postgres_url

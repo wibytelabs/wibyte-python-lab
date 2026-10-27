@@ -29,7 +29,7 @@ def checked(label, command, env, *, timeout=30, capture=False, check=True, input
 
 FOUNDATION_TESTS = (
     'test_context.py', 'test_database.py', 'test_enqueue.py', 'test_executive_metadata.py', 'test_guards.py', 'test_http.py', 'test_http_platform.py', 'test_http_provisioning.py', 'test_http_transfers.py', 'test_idempotency.py', 'test_identity.py',
-    'test_mutation_rls.py', 'test_payloads.py', 'test_primary_worker.py', 'test_provisioning.py', 'test_read_rls.py', 'test_router_mount.py', 'test_schema.py', 'test_services.py', 'test_transfer_completion.py', 'test_transfer_preview.py', 'test_worker_execution.py', 'test_worker_leases.py', 'test_worker_transitions.py',
+    'test_legacy_snapshot.py', 'test_legacy_historical.py', 'test_legacy_import.py', 'test_mutation_rls.py', 'test_payloads.py', 'test_primary_worker.py', 'test_provisioning.py', 'test_read_rls.py', 'test_router_mount.py', 'test_schema.py', 'test_services.py', 'test_transfer_completion.py', 'test_transfer_preview.py', 'test_worker_execution.py', 'test_worker_leases.py', 'test_worker_transitions.py',
 )
 
 
@@ -110,6 +110,7 @@ class Fixture:
         self.ready("127.0.0.1")  # Excludes entrypoint's temporary socket-only initialization server.
         self.sql("Bootstrap isolated identities and private schema", "\n".join([
             "REVOKE ALL ON DATABASE wpl_fixture FROM PUBLIC;",
+            f"COMMENT ON DATABASE wpl_fixture IS 'wpl.disposable.rehearsal:{self.owner}';",
             "REVOKE CREATE ON SCHEMA public FROM PUBLIC;",
             *(f"CREATE ROLE wpl_{role} LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '{self.passwords[role]}';"
               for role in ("migrator", "app", "worker")),
@@ -129,7 +130,7 @@ class Fixture:
         name = "wpl-p02-test-" + uuid4().hex
         self.register("container", name)
         settings = {"PYTHONPATH": "/app", "PYTHONDONTWRITEBYTECODE": "1", "PYTHONUNBUFFERED": "1",
-                    "WPL_FOUNDATION_ENABLED": "true"}
+                    "WPL_FOUNDATION_ENABLED": "true", "WPL_REHEARSAL_OWNER": self.owner}
         for kind, role in (("APPLICATION", "app"), ("MIGRATION", "migrator"), ("WORKER", "worker")):
             settings[f"WPL_{kind}_DATABASE_URL"] = (
                 f"postgresql+psycopg://wpl_{role}:{self.passwords[role]}@fixture-db/wpl_fixture?sslmode=disable")
