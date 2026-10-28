@@ -1,3 +1,240 @@
+# P02 final local implementation evidence — tenant foundation and safe file operations
+
+Status: IMPLEMENTED LOCALLY; AWAITING ARCHITECT REVIEW. The final mandatory local
+suite passed 425 tests, build and lint. This report closes the planned P02
+implementation sequence and preserves every previous checkpoint below. It does
+not record architect acceptance, production readiness or deployment. Stop before P03.
+
+## Source identity
+
+- Accepted P01: 0fc1ca53932b94fdcb91ddc20313cbb85ac7edbd.
+- Prior P02.7 implementation: 2f3e9e58151bc27dcd46e9067fbf35fd0be961a7.
+- Parent/report: 96920d78959f110d3dcdaa36af1a2382a34b1d2d.
+- Final P02.8 implementation: ce2fec4919453ec0ac321bad01707b883edbb1ef; branch codex/p02-tenant-foundation.
+- Exactly 13 implementation paths and their SHA256 values are recorded below.
+  The following commit changes this report only. Unrelated untracked documents and
+  work artifacts are excluded from both source and report staging.
+
+## Final file behavior and proof
+
+Workspace list/read/write/create/mkdir/rename/delete and upload/download now use
+one stdlib descriptor-based helper. The workspace service no longer constructs
+shell file commands. The adapter invokes fixed isolated Python argv as student,
+with a trusted fixed workspace root; request paths are separate arguments. The
+helper imports without configuration, Docker, database or provider effects.
+
+The helper opens every root/parent component with no-follow directory descriptors.
+It rejects absolute, empty, dot/dotdot, backslash/control-character and .git component
+paths, with bounded UTF-8 path length/depth. Listing the root uses the explicit dot
+case. .gitignore remains an ordinary file. Symlinks, hardlinks, FIFOs/devices and
+oversized regular files are denied. File bytes are bounded at 10 MiB, directory
+listings/tree operations at 4096 entries, depth at 32 and recursive tree bytes at
+64 MiB. Unsafe descendants are checked before recursive mutation; concurrent
+changes can still produce a partially completed recursive delete. This is not a
+transactional directory operation or isolation from a malicious same-UID/root process.
+
+Editor saves stage a bounded same-directory exclusive temporary, fsync file data,
+preserve ordinary permission bits, recheck identity and atomically replace the
+validated target. Injected pre-publication failure preserves old bytes and removes
+only the temporary whose identity is still owned. Replaced foreign names are left
+alone. Exclusive create/upload and rename use Linux libc renameat2 RENAME_NOREPLACE
+without an unsafe fallback. Parent descriptors remain anchored to the opened inode
+under name substitution. Rename is the publication point; no later directory-fsync
+step misreports a committed edit as a pre-commit failure. No power-loss/directory
+entry durability claim is made.
+
+Editor/upload bytes use Docker put_archive into a random root-owned /tmp staging
+directory, rather than argv payloads. Initialization requests root ownership with
+0711 directory, 0600 marker and fixed 0444 payload; workspace operations request
+student. Cleanup checks the recorded directory device/inode/UID, matching nonce
+marker, expected entries and regular single-link owned payload before unlink/rmdir.
+Partial initialization failure removes only identified owned state. Unexpected names
+or changed identity are retained. Cleanup after a failed operation preserves its
+primary error; cleanup failure after a completed operation produces the explicit
+"File operation completed, but temporary staging cleanup failed. Reload before
+retrying." response. It does not suggest that committed bytes were rolled back.
+
+Routes retain authentication and lab ownership checks before container access.
+Transfer responses retain raw bytes, no-store/nosniff and safe attachment headers;
+upload bounds remain enforced during streaming, and activity updates follow success.
+Errors use fixed scoped 400/404/409/413/500 projections without raw container stderr.
+Intentional file-contract tightening: absolute paths are rejected, duplicate creates
+conflict instead of touch success, and missing deletes return missing instead of
+silent rm-style success. No global error handler or unrelated route redesign is added.
+
+Fourteen helper tests perform actual temporary-filesystem operations and actual
+isolated helper CLI invocations. Thirteen route cases execute the real FastAPI
+routes, workspace service, adapter and shared helper in isolated Python processes.
+Only identity and Docker transport are synthetic. Cases cover ownership denial
+before lookup, ordinary/nested/Unicode/metacharacter CRUD, traversal/.git/symlinks,
+nonregular/hardlinked/oversized files, exact size boundary, no-overwrite conflicts,
+atomic failure/mode preservation, parent/target/temp substitution, byte/header
+semantics, redacted errors, bounded staging and cleanup identity refusal. The final
+case proves a completed write remains committed when cleanup fails and exercises
+partial-stage marker-write failure cleanup.
+
+The fake Docker transport asserts requested root/student users and executes the
+production Python scripts as the fixture process UID. These are not tests inside
+a real student container and do not independently prove Linux root/student ownership
+separation or availability of renameat2 in the deployed image. No existing student
+container, workspace, runtime image or live service was modified by this evidence run.
+
+## Final mandatory local execution
+
+Raw log: /home/wibyte/wibyte-python-lab/work/p02-full-evidence-APyPSnR8/P02.8-final-full-checks.log
+
+Raw log SHA256: d37c6d4b651f4386a4ea48c7e10ca819332e27d628adaf6524039d669a7fa172
+
+| Mandatory stage | Actual result |
+| --- | --- |
+| Runner failure/isolation contracts | 23 passed; 0.589 s |
+| Setup regressions | 16 passed; 0.305 s |
+| Legacy backend regressions | 12 passed; 24.884 s |
+| Frontend registered policy tests | 96 passed across 8 modules; zero failed/cancelled/skipped/TODO |
+| Foundation tests | 278 passed across 29 registered modules; 137.879 s |
+| Total | 425 passed; no skipped suites |
+| Recreated-target migration/runtime smoke | Passed |
+| Fixture cleanup | Exact owned database and network removed; tmpfs discarded |
+| Frontend build | Passed; 101 modules; 583 ms |
+| Lint | Passed with zero errors and two existing warnings |
+
+The Node identity was sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c.
+The backend identity was sha256:bfc852f33cf0fbc9ff7a61897d599682ac71bc4a2a8e15ba1bc8d2268b896d2e.
+The actual disposable PostgreSQL 17.11/Psycopg 3.3.6 runtime checks retain separate
+non-owner, non-superuser, non-BYPASSRLS wpl_app and wpl_worker identities; schema
+ownership remains wpl_migrator. The test database container was
+22130e4bdb3f604b8456a20a9078ec7ba09a66e4f3ca79d4d25c25ea8fe3d36e;
+the internal network was cf0cf227aecab6cd4235326ed294a7cd694e18dc5575c15a7df47d91b7ef33a2.
+Both exact IDs have successful cleanup records. Isolation checks confirm internal
+network, no published database ports, tmpfs and no host socket/data mount.
+
+Known warnings are retained: App.tsx useEffect loadGitStatus dependencies at
+1161/1167, the 842.81 kB JavaScript chunk (225.81 kB gzip), and Starlette's httpx
+TestClient deprecation. CSS is 27.50 kB (6.24 kB gzip). None was suppressed or
+presented as a newly clean warning baseline.
+
+Earlier focused evidence (these precede the final corrections and are not a
+substitute for the final full gate):
+
+- Shared descriptor helper: 265 unit/foundation cases; /home/wibyte/wibyte-python-lab/work/p02-file-ops-evidence-vZUhdstj/file-ops-checks.log; raw SHA256 11471dbf4d1fffbc58dd86b1297fef5ef1c77b64672ca76b2859214eb6566e73.
+- Actual service/route/transfer wiring: 277 unit/foundation cases; /home/wibyte/wibyte-python-lab/work/p02-file-api-evidence-b0QndGlg/file-api-checks.log; raw SHA256 44374fde26a8e1972fc0242becf7057b6ddd8a73ce8fd7d4d0485fbcbc1d107a.
+
+## P02 scope retained and review boundaries
+
+Earlier checkpoint reports below preserve source commits and execution proof for
+identity verification, scoped context/pool cleanup, actual PostgreSQL RLS/guards,
+current capability revocation, ordinary mutation audit/rollback, executive metadata,
+idempotent pending organization provisioning, initial invitation worker execution,
+confirmed primary transfer and separately authorized reasoned recovery. Worker
+claims/transitions use stored authority and owner/generation fencing; the durable
+fake adapter proves deduplication/crash reconciliation, not real email delivery or
+universal external exactly-once effects. Transfer notification jobs remain pending
+integration and are not represented as delivered.
+
+The frontend remains default-off. Real client/controller and TSX/SSR tests plus
+signed HTTP tests establish local contracts; live browser interaction, running
+nginx/public proxy, real Supabase project/key rotation/recent-auth compatibility
+and real provider delivery smoke were NOT RUN. Remote GitHub Actions is UNVERIFIED.
+The build flag used to compile the branch does not activate the deployed app.
+
+P02.7 imports only explicit protected snapshot fixtures into an owned disposable
+private personal archive. This is a bounded archival bridge for the future personal
+runtime, not an activated P03 runtime migration. Historical populated NOT NULL
+migration failure is proved and explicitly handled by archival reading without
+inventing expiry or silently stamping. Credentials remain encrypted and disabled
+for reauthorization; identity binding requires explicit UUID mapping, never email
+merge, user approval or invented institution membership. Existing live SQLite,
+private environment, providers and student files remain outside the rehearsal.
+
+## Current T01–T35 ledger
+
+The following PASS statements describe the exercised local implementation and
+include their evidence limits. They are not architect acceptance or live validation.
+
+## Current T01–T35 ledger (implemented surfaces only)
+
+| ID | Current result and limit |
+| --- | --- |
+| T01 | PASS final local gate: 425 tests, build/lint with existing warnings; implementation ready for architect review, acceptance pending. |
+| T02 | PASS socket-blocked foundation factory/domain/mount imports and no legacy DB side effects; actual legacy-main composition tested separately with synthetic adapters. |
+| T03 | PASS actual main default/explicit off and dotenv-only nonactivation, legacy SQLite/health/auth/CORS retained; explicit process-on shares the same router with bounded lifecycle cleanup. |
+| T04 | PASS fresh/repeat/concurrent/advisory migration, no import DDL, recreation. |
+| T05 | PASS actual non-owner app/worker attributes and DDL/escalation denials. |
+| T06 | PASS actual composite constraints under explicit disposable write fixture; not mutation RLS proof. |
+| T07 | PASS implemented identity/read, provisioning, protected transfer and separate executive recovery HTTP, pending own /me and sanitized stable errors. |
+| T08 | PASS actual asymmetric crypto and synthetic claim/key/metadata negative matrix. |
+| T09 | PASS synthetic bounded rotation/outage/cache paths; real project compatibility unverified. |
+| T10 | PASS implemented tenant/executive/provisioning plus primary/recovery runtime and signed HTTP scope matrix; no client actor/scope authority. |
+| T11 | PASS scoped pool commit/rollback/error/raised cancellation/PG timeout and HTTP reuse; no transport-disconnect claim. |
+| T12 | PASS implemented reads/current capability revocation plus executive org status/epoch/audit and tenant access suspension/resume; no immediate provider-logout claim. |
+| T13 | PASS atomic executive creation of one pending organization/designated invitation membership, encrypted intent, outbox, audit and receipt; no email binding or activation. |
+| T14 | PASS actual concurrent same-actor/key/body DB and signed HTTP creation, changed-body conflict, actor namespaces, new-pool replay and current authority recheck. |
+| T15 | PASS ordinary runtime services/direct SQL deny primary removal/demotion/suspension; protected transfer/recovery HTTP use separate confirmed paths and no direct designation grants. |
+| T16 | PASS actual app-role concurrent confirmations, version/target/confirmation/recent-auth checks, transfer/removal and target-global-suspension locks; signed HTTP replay matches one committed change. |
+| T17 | PASS active-primary/security-recovery invariants and explicit recovery HTTP restoring active org while preserving old global block and retained admin membership. |
+| T18 | PASS implemented ordinary paths: DB final-instructor races, runtime instructor replacement/history, direct SQL guard and actual assignment-aware read matrix. |
+| T19 | PASS explicit targeted recovery capability, current expiry/revocation checks, stored reason, recent confirmation and atomic recovery audit/notification intent; no self-bootstrap. |
+| T20 | PASS implemented invitation pipelines plus confirmed primary changes with atomic business/receipt/audit/job/outbox, caught failure rollback and new-pool replay; notification jobs remain pending integration. |
+| T21 | PASS actual restricted-worker competing claims, SKIP LOCKED, expiry/reclaim/late completion fencing and durable fake-adapter dedup/crash reconciliation; no universal external exactly-once claim. |
+| T22 | PASS bounded batch/lease/attempts, persisted exponential retry/cap/dead-letter, stored scope/actor/global/member/role/org checks and explicit fixture timestamps without long sleeps. |
+| T23 | PASS implemented invitation/confirmation redaction plus bound AES-GCM fixture-token archive, explicit keys before target transactions and app/worker archive denial; imported credentials remain disabled for reauthorization. |
+| T24 | PASS local real-client/controller and actual TSX/SSR identity, directory/provision/detail/job and protected transfer/recovery contracts; truthful queued/activation state. Browser/provider smoke NOT RUN. |
+| T25 | PASS local pending/non-executive/account-change/deep-link UI contracts plus existing actual signed HTTP tampering/RLS denials; no client grant. Browser interaction smoke NOT RUN. |
+| T26 | PASS production P01 client public /api/v1 joining and actual conditional /v1 child mount/internal routes; running nginx/browser smoke NOT RUN. |
+| T27 | PASS explicit protected-snapshot dry run preserves source bytes/mtime and actual target counts; unchanged populated historical migration failure proved and handled by explicit old-revision archival read with unknown expiry retained. |
+| T28 | PASS confirmed owned-disposable private personal archive import with reconciled counts/UUID/owner/repo maps, concurrent/new-connection idempotency and ambiguity/orphan/conflict/corruption/rollback denials; no activated P03 runtime import. |
+| T29 | PASS imported fixture tokens encrypted and disabled, personal scope retained, existing UUID bindings explicit/distinct with no user approval or invented memberships/institution/email remap. |
+| T30 | PASS shared descriptor-based helper rejects traversal, absolute/control/backslash paths, .git components, symlink roots/parents/targets, hardlinks and nonregular files; bounded file/tree/list operations. Actual helper processes tested; no live student-container smoke. |
+| T31 | PASS nested CRUD, Unicode and shell metacharacters, exact byte limits, atomic same-directory editor replacement, injected failure preserving old bytes/mode and owned-only temporary cleanup; no-overwrite rename/create races. Concurrent recursive deletion can partially complete; no power-loss durability claim. |
+| T32 | PASS actual authenticated workspace/transfer routes, service and adapter execute the shared helper in isolated processes with fake Docker transport; ownership checked before container lookup, safe status errors, raw transfer headers/bytes, bounded upload, owned staging and truthful committed-write cleanup error. Real Docker/student UID smoke NOT RUN. |
+| T33 | PASS final CLI/domain/migration/runtime/helper/test snapshot and owned internal Postgres fixture; no host socket/data mount, published ports or private configuration in tests. |
+| T34 | PASS final mandatory 96 frontend cases/8 modules and 278 foundation cases/29 modules with strict discovery/outcome policy; remote Actions UNVERIFIED. |
+| T35 | PASS implemented failure/timeout/cleanup contracts and actual cleanup; no app service mutation. |
+
+## Remaining work and review limits
+
+No further planned P02 implementation slice is queued by this checkpoint. Architect
+review and acceptance are pending. The reviewer should assess:
+
+- The complete T01–T35 evidence and exact source commits, actual role/RLS and
+  concurrency proofs, current authority rechecks, audit atomicity and worker fencing.
+- The narrow personal archival bridge and explicit historical migration handling
+  before any later live migration or P03 consumption.
+- Descriptor traversal, Linux/glibc renameat2 requirement, root-owned staging and
+  exact cleanup identity checks; concurrent same-UID changes, partial recursive
+  deletion and absence of power-loss durability guarantees.
+- The deliberate file API tightening and truthful completed-write cleanup error.
+- The unexecuted real student-container, browser/proxy, identity project/provider
+  and remote CI validation; SSR/fake transport/simulated effects must not substitute
+  for those checks when considering activation.
+
+Do not deploy, enable production flags, mutate live data/provider configuration,
+start P03, or claim accepted completion based on this local report. Stop for
+architect review after the authorized source/report commits and branch backup push.
+
+## Final implementation paths and hashes
+
+- backend/app/routes/file_transfer.py — SHA256 251a8e9478fe3e3a23649e384f878efe00fe485ca1852700e6058cc9ff3eb99d
+- backend/app/routes/workspace.py — SHA256 c5634ea7acfcaf0373d612d61b0009b3e26fe612595e9cf7edd478ca14aed518
+- backend/app/runtime/__init__.py — SHA256 79e527aaa93c719de171bc3510e18606872ceb910be9ed646074851b08e86d4c
+- backend/app/runtime/container_files.py — SHA256 0f298dd51ef4a24e4265ed6642fe7f0318ad64893ac700b5e9037fa7040ede47
+- backend/app/runtime/file_errors.py — SHA256 655f478db9d83820f8555b4e92e38ba604030f2c460ec94001e157d88c9a91da
+- backend/app/runtime/file_ops.py — SHA256 84bf9cf3caebdd8457dd84bdc198a1501c71de029c793a93d4f86ecbb265f2dd
+- backend/app/services/workspace_service.py — SHA256 ef44e744db81d5b4b7fd548f1eb1762650f1e263a2e150052c7455d434506ef0
+- backend/tests/foundation/file_route_fixture.py — SHA256 72e59f012bcf740fdd23c24cbe3f6c4b95ec3dcab3f3cff4c2db8015ee23a9c9
+- backend/tests/foundation/test_database.py — SHA256 547bf1e6d7c712a60d8b45368f7e911eccdcf2df041f257ee500eafa1e2c181b
+- backend/tests/foundation/test_file_ops.py — SHA256 555ad05dee651adad8b94e4a3baddc8ef15bc3296537f8b2d9781df993fed439
+- backend/tests/foundation/test_file_routes.py — SHA256 931421b81d86c4da135b16d99026a828263aab24ef3e1d4374403f9e20f9aec2
+- docs/development.md — SHA256 0db6c757c8cef285025b03101f37ea29009a633f17081a3372ebee101512a6d0
+- scripts/check_foundation.py — SHA256 b967dd94bceca7889b029ea6b3ae9d4d1bb652d766f7d74bb63360f847c4127d
+
+## Preserved prior checkpoint report
+
+Prior report raw SHA256: 4cbda706b597950f46a9c3d3fa6e5599e895a6d4aa0e9e31b54d96f946f4831b
+
+<details>
+<summary>Complete prior P02 evidence and checkpoint history, preserved verbatim</summary>
+
 # P02 completion evidence — protected snapshot and disposable import rehearsal
 
 Status: IN PROGRESS, approximately 86%. P02.7 now has explicit protected-snapshot
@@ -2297,6 +2534,8 @@ academic-data downgrade/rollback plan. No phase beyond P02 is authorized here.
 - scripts/check_local.py — SHA256 45fb9ad481fe4653701699a8e598b3ef0ecabe49d9295456c603c916fc49282a
 - scripts/migrate_foundation.py — SHA256 99c224e817e7cd5d577051dcc12e867f3bdf336c6797ade6330938b9be087f27
 - scripts/test_check_foundation.py — SHA256 9db6bd94312fe62e7a6be2ad86f03e90015bce6f55f5221a31dfa7d27119a253
+
+</details>
 
 </details>
 
