@@ -1,7 +1,5 @@
 
 import asyncio
-import io
-import tarfile
 from urllib.parse import quote
 
 from fastapi import HTTPException, Request, Response
@@ -9,135 +7,20 @@ from fastapi import HTTPException, Request, Response
 from backend.app.auth import CurrentUser
 from backend.app.services.lab_service import lab_service
 
-LIMIT = 10 * 1024 * 1024
+from backend.app.runtime import container_files as files
+from backend.app.runtime.file_errors import file_error
 
-# Executed inside the container as the student user.
-FILE_SCRIPT = r"""
-import os, stat, sys
-
-action, relative = sys.argv[1:3]
-parts = relative.split("/")
-if (
-    not relative
-    or any(p in ("", ".", "..", ".git") for p in parts)
-    or any(ord(c) < 32 for c in relative)
-    or "\\" in relative
-):
-    sys.exit(10)
-
-try:
-    parent = os.open(
-        "/workspace/wibyte-workspace",
-        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
-    )
-    for part in parts[:-1]:
-        next_fd = os.open(
-            part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
-            dir_fd=parent,
-        )
-        os.close(parent)
-        parent = next_fd
-
-    if action == "upload":
-        with open(sys.argv[3], "rb") as source:
-            data = source.read(10 * 1024 * 1024 + 1)
-        if len(data) > 10 * 1024 * 1024:
-            sys.exit(13)
-        fd = os.open(
-            parts[-1],
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-            0o644,
-            dir_fd=parent,
-        )
-        try:
-            with os.fdopen(fd, "wb") as output:
-                output.write(data)
-        except BaseException:
-            os.unlink(parts[-1], dir_fd=parent)
-            raise
-    else:
-        fd = os.open(
-            parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
-            dir_fd=parent,
-        )
-        with os.fdopen(fd, "rb") as source:
-            info = os.fstat(source.fileno())
-            if not stat.S_ISREG(info.st_mode):
-                sys.exit(10)
-            if info.st_size > 10 * 1024 * 1024:
-                sys.exit(13)
-            data = source.read(10 * 1024 * 1024 + 1)
-            if len(data) > 10 * 1024 * 1024:
-                sys.exit(13)
-        sys.stdout.buffer.write(data)
-except FileExistsError:
-    sys.exit(11)
-except FileNotFoundError:
-    sys.exit(12)
-except OSError:
-    sys.exit(10)
-"""
+LIMIT=files.LIMIT
 
 
-def checked(result):
-    messages = {
-        10: (400, "Invalid file path or inaccessible file."),
-        11: (409, "A file with that name already exists. Rename it first."),
-        12: (404, "File or folder not found."),
-        13: (413, "Maximum file size is 10 MB."),
-    }
-    if result.exit_code:
-        status, message = messages.get(
-            result.exit_code, (500, "File transfer failed.")
-        )
-        raise HTTPException(status_code=status, detail=message)
+def upload_bytes(container,path,data):
+    try:files.staged_write(container,path,data,exclusive=True)
+    except Exception as error:raise file_error(error) from None
 
 
-def upload_bytes(container, path, data):
-    temp = container.exec_run(
-        ["python", "-c",
-         "import tempfile; print(tempfile.mkdtemp(prefix='wpl-upload-'))"],
-        user="student",
-    )
-    checked(temp)
-    directory = temp.output.decode().strip()
-
-    try:
-        archive = io.BytesIO()
-        with tarfile.open(fileobj=archive, mode="w") as tar:
-            entry = tarfile.TarInfo("payload")
-            entry.size = len(data)
-            entry.mode = 0o444
-            tar.addfile(entry, io.BytesIO(data))
-
-        if not container.put_archive(directory, archive.getvalue()):
-            raise HTTPException(status_code=500, detail="Upload staging failed.")
-
-        checked(container.exec_run(
-            ["python", "-c", FILE_SCRIPT, "upload", path, directory + "/payload"],
-            user="student",
-        ))
-    finally:
-        container.exec_run(
-            ["python", "-c",
-             "import os,sys; "
-             "p=sys.argv[1]; "
-             "os.path.exists(p+'/payload') and os.unlink(p+'/payload'); "
-             "os.rmdir(p)",
-             directory],
-            user="student",
-        )
-
-
-def download_bytes(container, path):
-    result = container.exec_run(
-        ["python", "-c", FILE_SCRIPT, "download", path],
-        user="student",
-        demux=True,
-    )
-    checked(result)
-    stdout, _ = result.output
-    return stdout or b""
+def download_bytes(container,path):
+    try:return files.invoke(container,'download',path)
+    except Exception as error:raise file_error(error) from None
 
 
 def register_file_transfers(router):

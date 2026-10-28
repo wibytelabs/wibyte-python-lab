@@ -1324,3 +1324,105 @@ immutable/secret-metadata constraints, historical disabled credentials, key/inpu
 failures and actual confirmed CLI commit/replay/non-fixture refusal. Earlier snapshot
 and historical cases remain mandatory. Fixture/schema cleanup remains ownership-checked;
 no live source export or configured provider/migration target is accessed.
+
+### P02.8 common safe file primitive (first slice)
+
+backend/app/runtime/file_ops.py is a stdlib-only helper intended to be supplied as
+trusted source to the existing Python container adapter, without rebuilding student
+images. Its root is a trusted adapter argument, never a frontend path. Import has no
+configuration/Docker/provider effects. Fourteen new mandatory local filesystem and
+subprocess contracts exercise the actual helper; general service/routes and transfer
+wiring are the next slice, so T30–T32 are not yet claimed complete by this utility.
+
+Root and every directory component are opened descriptor-relative with no-follow.
+User paths must be bounded relative components: no absolute path, empty/dot/dot-dot,
+backslash, control/DEL, .git component or root mutation. Only explicit '.' listing
+permits root. Root listing hides .git; .gitignore remains an ordinary permitted file.
+Regular files must have one hard link and be at most 10 MiB. Symlinks, FIFO/devices
+and oversized files are rejected on read/write/list/rename/delete, not just transfer.
+Listing is one level and bounded; rename/delete preflight a bounded tree (4096 entries,
+32 levels, 64 MiB total and 10 MiB/file), including protected descendants, before
+mutation. Recursive delete traverses descriptors and never follows outside links.
+Concurrent uncooperative changes may cause conflict or partial recursive removal;
+this is not a transactional directory-delete or container-isolation claim.
+
+Editor writes validate bytes before creating parents, use an exclusive unpredictable
+regular temp in the opened parent, write/fsync and atomically replace the target,
+retaining ordinary permission bits. Failure cleanup compares inode/type and removes
+only its owned temp; a replaced temp name is left untouched. A target identity swap
+conflicts. Missing-target create/write and rename use Linux libc renameat2 with
+RENAME_NOREPLACE, failing closed if unsupported; check-then-rename would risk overwriting
+a concurrently created destination. No shell/path interpolation or unchecked recursive
+rm command exists in the helper. Parent FDs remain bound to their opened directory
+inodes across a symlink-name swap; they do not provide independent durable storage
+or a security boundary against a hostile same-UID process moving owned directories.
+
+Real tests prove ordinary UTF-8/list/nested-create/read/write/rename/delete, root/Git/
+traversal rejection, symlink/FIFO/hardlink/size bounds, 10 MiB boundary, atomic failure/
+foreign-temp preservation, target/parent swaps, concurrent destination creation,
+preflight limits and subprocess protocol/descriptor cleanup. Only owned temporary
+fixtures are touched; no live/student files or application containers are accessed.
+
+### P02.8 actual WorkspaceService and transfer wiring
+
+WorkspaceService now invokes that common descriptor helper for list/read/write/
+create/mkdir/rename/delete, with argv/data separation and no shell command or lexical
+safe-path fallback. The trusted adapter reads helper source from the backend package
+and supplies it to /usr/local/bin/python -I -c in the existing container as student.
+No package installation, student-image rebuild, service restart or module file copy
+inside an active workspace is needed. The fixed root comes from the adapter, never
+a request. Existing owner/session resolution runs before every file/transfer action.
+The existing HTTP paths, response shapes, UTF-8 replacement behavior and ordinary
+nested parent creation are retained. Safe-path changes deliberately reject absolute
+paths rather than stripping their slash, return 409 for duplicate file creation
+rather than touching it, and return 404 for an absent delete rather than silent rm -f.
+Root mutation, .git, symlinks/nonregular/hardlinked and oversized files are rejected;
+unsafe entries at a listed level fail rather than pretending to be ordinary files.
+
+Editor and raw upload content are staged outside the workspace to avoid OS argv size
+limits. Each operation creates a random backend-owned /tmp/wpl-files-<nonce> directory
+through a root exec with 0711 permissions and a 0600 owner marker. Docker extracts one
+fixed root-owned read-only payload; student cannot replace staging entries. Only the
+common helper runs workspace operations as student. Cleanup uses a separate bounded
+root script restricted to that exact prefix/nonce, directory device/inode/UID, marker
+and the two known file names. It refuses symlinks, unexpected entries or changed
+identity rather than deleting arbitrary contents. No recursive root rm or request
+path is passed to root staging/cleanup. Root commands act solely on generated staging,
+never a workspace target. This does not make a compromised same-UID/root container a
+separate security boundary; P03 runtime isolation remains a later phase.
+
+Upload and download reuse the same helper, preserving exclusive upload, raw byte
+content, 10 MiB cap, cache-control/nosniff/content-disposition and activity updates only
+after success. They do not weaken the previous no-follow transfer traversal. P01 URL,
+bearer and FormData/header behavior stays in the unchanged client. General routes now
+project safe 400/404/409/413/500 details, including explicit file/tree size errors and
+conflict on detected changes, without raw container stderr or path/content diagnostics.
+No global error handlers change unrelated legacy routes. Staging failure or a helper
+error still attempts only its verified owned cleanup; cleanup failure is surfaced.
+
+Twelve additional mandatory contracts invoke actual routes, service, adapter and
+supplied helper source in isolated subprocess fixtures. Only identity/provider and
+Docker transport are synthetic; the fake Docker transport runs the exact trusted
+Python scripts against private local files and asserts student/root command scopes.
+Tests cover normal API shapes and nested operations, absent/foreign identity before
+container resolution, path/root/Git/symlink/nonregular/hardlink denial, explicit 413
+across operations, no-overwrite conflict, raw transfer headers/bytes/activity, injected
+staging/helper failure cleanup and diagnostic redaction, ownership/foreign-entry
+cleanup refusal, shell characters and no legacy config/provider imports. These are
+local adapter/route contracts plus actual OS helper tests, not a live student-container
+or browser/provider smoke run. The former direct container-shell implementation is
+removed; no running app/student container or private/student file is touched by checks.
+
+### File commit-point and initialization failure clarification
+
+Atomic rename is the file/rename commit point. The helper fsyncs written file data
+before publishing, with no later directory-fsync step that could misreport a committed
+rename as a failed pre-commit edit. This supplies atomic publication, not guaranteed
+directory-entry durability through power loss or independent durable lab storage.
+If staging cleanup fails after a completed file action, its HTTP 500 detail explicitly
+says the operation completed and asks for reload before retry; it does not claim old
+bytes remain. Primary failures before replacement retain the earlier tested old-byte
+preservation and owned cleanup. Staging initialization now also cleans its exact
+partial marker/directory on error, refusing changed/unexpected entries. One added
+actual route/script contract proves a committed write with failed cleanup is reported
+truthfully and an injected marker-write failure removes only the partial owned stage.
